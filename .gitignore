@@ -7,6 +7,7 @@ test-results/
 
 # Rust / Tauri builds
 src-tauri/target/
+src-tauri/gen/
 target/
 
 # Generated report and QA artifacts

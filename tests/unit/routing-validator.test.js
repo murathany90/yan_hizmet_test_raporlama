@@ -10,6 +10,20 @@ describe("metadata routing and validation", () => {
     expect(route.step.id).toBe("SENS_50_005");
   });
 
+  it("routes PFK multi-unit metadata without colliding with the standard route", () => {
+    const route = resolveCsvRoute({
+      TEST_SERVICE: "PFK", PLANT_TYPE: "HES", STEP_ID: "RES_MAX_NEG200",
+      CAMPAIGN_ID: "PFK-TEST", FACILITY_ID: "TESIS", TEST_SCOPE: "MULTI_UNIT",
+      ENTITY_TYPE: "UNIT", ENTITY_ID: "U1", UNIT_ID: "U1", UNIT_NAME: "Ünite 1", UNIT_COUNT: "2", EVENT_ID: "E1", RUN_ID: "R1"
+    });
+    expect(route.isPfkCampaign).toBe(true);
+    expect(route.campaign).toMatchObject({ campaignId: "PFK-TEST", unitId: "U1", runId: "R1" });
+  });
+
+  it("rejects partial PFK campaign metadata", () => {
+    expect(() => resolveCsvRoute({ TEST_SERVICE: "PFK", PLANT_TYPE: "HES", STEP_ID: "RES_MAX_NEG200", CAMPAIGN_ID: "PFK-TEST" })).toThrow(/çok üniteli CSV metadata alanı eksik/);
+  });
+
   it("rejects missing route metadata", () => {
     expect(() => resolveCsvRoute({ TEST_SERVICE: "PFK" })).toThrow(/PLANT_TYPE, STEP_ID/);
   });

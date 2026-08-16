@@ -1,6 +1,11 @@
 import { CONFIGS } from "../app/config.js";
 
 export const REQUIRED_ROUTE_METADATA = ["TEST_SERVICE", "PLANT_TYPE", "STEP_ID"];
+export const PFK_CAMPAIGN_METADATA = [
+  "CAMPAIGN_ID", "FACILITY_ID", "TEST_SCOPE", "ENTITY_TYPE", "ENTITY_ID",
+  "UNIT_ID", "UNIT_NAME", "UNIT_COUNT", "STEP_ID", "EVENT_ID", "RUN_ID"
+];
+const PFK_CAMPAIGN_MARKERS = PFK_CAMPAIGN_METADATA.filter((field) => !["STEP_ID", "UNIT_ID"].includes(field));
 
 export function normalizeRouteMetadata(metadata) {
   return {
@@ -26,6 +31,42 @@ export function resolveCsvRoute(metadata, configs = CONFIGS) {
   if (!step) {
     throw new Error(`${route.service} ${route.plant} için STEP_ID=${route.stepId} bulunamadı.`);
   }
-  return { ...route, configKey, config, step };
-}
+  const markedCampaignFields = PFK_CAMPAIGN_MARKERS.filter((field) => String(metadata[field] ?? "").trim());
+  if (route.service !== "PFK" && markedCampaignFields.length) {
+    throw new Error("Kampanya/ünite metadata alanları yalnız PFK çok üniteli çalışma alanında kullanılabilir.");
+  }
+  const isPfkCampaign = route.service === "PFK" && markedCampaignFields.length > 0;
+  if (!isPfkCampaign) return { ...route, configKey, config, step, isPfkCampaign: false };
 
+  const campaignMissing = PFK_CAMPAIGN_METADATA.filter((field) => !String(metadata[field] ?? "").trim());
+  if (campaignMissing.length) {
+    throw new Error(`PFK çok üniteli CSV metadata alanı eksik: ${campaignMissing.join(", ")}`);
+  }
+  const testScope = String(metadata.TEST_SCOPE).trim().toUpperCase();
+  if (testScope !== "MULTI_UNIT") {
+    throw new Error("PFK çok üniteli CSV için TEST_SCOPE=MULTI_UNIT olmalıdır.");
+  }
+  const unitCount = Number.parseInt(String(metadata.UNIT_COUNT).trim(), 10);
+  if (!Number.isInteger(unitCount) || unitCount < 2) {
+    throw new Error("PFK çok üniteli CSV için UNIT_COUNT en az 2 olmalıdır.");
+  }
+  return {
+    ...route,
+    configKey,
+    config,
+    step,
+    isPfkCampaign: true,
+    campaign: {
+      campaignId: String(metadata.CAMPAIGN_ID).trim(),
+      facilityId: String(metadata.FACILITY_ID).trim(),
+      testScope,
+      entityType: String(metadata.ENTITY_TYPE).trim(),
+      entityId: String(metadata.ENTITY_ID).trim(),
+      unitId: String(metadata.UNIT_ID).trim().toUpperCase(),
+      unitName: String(metadata.UNIT_NAME).trim(),
+      unitCount,
+      eventId: String(metadata.EVENT_ID).trim(),
+      runId: String(metadata.RUN_ID).trim()
+    }
+  };
+}

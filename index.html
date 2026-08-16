@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#063f68">
-    <title>TEİAŞ-YHDA v0.6.0</title>
+    <title>TEİAŞ-YHDA v0.6.1</title>
     <link rel="stylesheet" href="/src/styles/main.css">
   </head>
   <body>
@@ -20,7 +20,7 @@
       </div>
       <div class="header-actions">
         <span id="runtimeBadge" class="runtime-badge">Web</span>
-        <span class="version-badge">v0.6.0</span>
+        <span class="version-badge">v0.6.1</span>
       </div>
     </header>
 
@@ -54,6 +54,21 @@
             <div id="metaForm" class="form-grid"></div>
           </article>
 
+          <article id="pfkCampaignCard" class="card pfk-campaign-card" hidden>
+            <div class="section-heading responsive-heading">
+              <div>
+                <span class="section-kicker">Yalnızca PFK</span>
+                <h3>Santral / Ünite Yapısı</h3>
+                <p>Çok üniteli kampanya, standart tek ünite PFK akışını değiştirmez. Kampanya CSV'leri ünite, adım ve çalıştırma kimliğiyle yönlendirilir.</p>
+              </div>
+              <div class="upload-actions">
+                <button id="pfkCampaignSetup" class="button secondary small" type="button">Çok Üniteli Kampanyayı Etkinleştir</button>
+                <button id="pfkCampaignZip" class="button primary small" type="button" hidden>Kampanya Şablon ZIP İndir</button>
+              </div>
+            </div>
+            <div id="pfkCampaignForm" class="form-grid"></div>
+          </article>
+
           <article class="card">
             <div class="section-heading responsive-heading">
               <div>
@@ -65,6 +80,7 @@
                 <label class="button primary" for="bulkFiles">Dosyaları Seç</label>
                 <input id="bulkFiles" class="visually-hidden" type="file" accept=".csv,text/csv" multiple>
                 <button id="nativeBulkOpen" class="button secondary" type="button" hidden>Yerel Dosyaları Aç</button>
+                <button id="downloadAllTemplates" class="button ghost" type="button">Tüm Test Şablonlarını ZIP İndir</button>
               </div>
             </div>
             <div id="bulkSummary" class="bulk-summary" aria-live="polite"></div>
@@ -73,6 +89,14 @@
         </section>
 
         <section id="chartsPanel" class="tab-panel">
+          <article id="pfkChartScope" class="card chart-scope" hidden>
+            <strong>PFK çok üniteli görünüm</strong>
+            <div class="upload-actions" role="group" aria-label="PFK grafik görünümü">
+              <button class="button ghost small" type="button" data-pfk-chart-scope="unit">Ünite</button>
+              <button class="button ghost small" type="button" data-pfk-chart-scope="comparison">Karşılaştırma</button>
+              <button class="button ghost small" type="button" data-pfk-chart-scope="plant">Santral</button>
+            </div>
+          </article>
           <article class="card chart-selector-card">
             <div class="field-group">
               <label for="graphStep">Grafiği gösterilecek test adımı</label>
@@ -100,6 +124,7 @@
               <button id="makeReport" class="button primary" type="button">Önizleme Oluştur</button>
               <button id="pdfReport" class="button success" type="button">PDF Oluştur</button>
               <button id="docxReport" class="button success" type="button">Word Raporu Oluştur</button>
+              <button id="pfkCampaignCertificates" class="button secondary" type="button" hidden>Ünite Sertifikaları ZIP</button>
               <button id="printReport" class="button secondary" type="button">Yazdır</button>
             </div>
           </article>
@@ -118,4 +143,3 @@
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
-

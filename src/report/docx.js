@@ -81,6 +81,28 @@ export async function buildDocxDocument(model) {
     [1250, 2250, 1000, 650, 2050, TABLE_WIDTH - 7200],
     13
   );
+  const technicalTables = () => [
+    textParagraph("Test ekipmanı ve kalibrasyon", { bold: true, size: 17, after: 70 }),
+    table(
+      ["Amaç", "Marka / Model", "Seri / Yazılım", "Kalibrasyon", "Doğruluk"],
+      model.technicalData.equipment.map((item) => [item.purpose, item.brandModel, item.serialNo, item.calibration, item.accuracy]),
+      [1450, 2500, 1750, 1850, TABLE_WIDTH - 7550],
+      13
+    ),
+    textParagraph("Kanal, ölçek ve kaynak bilgileri", { bold: true, size: 17, after: 70 }),
+    variablesTable()
+  ];
+  const campaignSummaryTable = () => table(
+    ["Ünite", "Yüklenen / Beklenen", "Son P [MW]", "Durum"],
+    model.campaignSummary.units.map((unit) => [
+      `${unit.unitId} — ${unit.unitName}`,
+      `${unit.loadedSteps} / ${unit.expectedSteps}`,
+      Number.isFinite(unit.activePowerMw) ? unit.activePowerMw.toFixed(2) : "—",
+      unit.status
+    ]),
+    [2800, 1700, 1300, TABLE_WIDTH - 5800],
+    15
+  );
 
   const children = [];
   if (model.assets.logoDataUrl) {
@@ -90,20 +112,25 @@ export async function buildDocxDocument(model) {
   children.push(textParagraph(model.title, { alignment: AlignmentType.CENTER, bold: true, size: 28, color: DARK_BLUE, after: 440 }));
   children.push(textParagraph(`${model.metadata.TEST_DATE || "Tarih"}  |  ${model.metadata.CITY || "İl"}`, { alignment: AlignmentType.CENTER, bold: true, size: 20, after: 260 }));
   children.push(textParagraph(`Rapor No: ${model.metadata.REPORT_NO || "—"}  |  Ünite: ${model.metadata.UNIT_ID || "—"}`, { alignment: AlignmentType.CENTER, size: 18, after: 260 }));
-  if (model.draft) children.push(textParagraph("TEKNİK ÖN DEĞERLENDİRME / TASLAK - Resmî rapor veya sertifika değildir.", { alignment: AlignmentType.CENTER, bold: true, color: "8A5700", size: 19, after: 180 }));
+  children.push(textParagraph(model.officialStatus, { alignment: AlignmentType.CENTER, bold: true, color: model.officialStatus === "İMZA ÖNCESİ" ? "19724F" : "8A5700", size: 19, after: 180 }));
   children.push(new Paragraph({ children: [new PageBreak()] }));
   children.push(heading("YÜKLEME VE TAMLIK DURUMU"));
   children.push(textParagraph(model.missingSteps.length ? `Eksik test adımları: ${model.missingSteps.map((step) => step.stepId).join(", ")}` : `Beklenen ${model.expectedStepCount} test adımının tamamı yüklendi.`, { bold: true, color: model.missingSteps.length ? "9B1C1C" : "19724F" }));
   children.push(textParagraph(model.reportNote));
-  children.push(textParagraph(`Kaynak/statü: ${model.sourceNote}`, { color: "526675" }));
 
-  model.sections.forEach((section, index) => {
-    children.push(heading(section.heading, index > 1 && section.type === "records"));
+  model.sections.forEach((section) => {
+    children.push(heading(section.heading));
     if (section.type === "participants") {
       children.push(table(["Alan", "Değer"], [["Test Ekibi / Katılımcılar", model.metadata.TEST_TEAM || "—"], ["Raporu Hazırlayan", model.metadata.REPORT_PREPARED_BY || "—"]], [2300, TABLE_WIDTH - 2300], 16));
-    } else if (section.type === "variables") children.push(variablesTable());
+    } else if (section.type === "technical" || section.type === "variables") children.push(...technicalTables());
+    else if (section.type === "campaign-summary") {
+      children.push(textParagraph(`Kampanya: ${model.campaignSummary.campaignId} · ${model.campaignSummary.facilityId} · ${model.campaignSummary.units.length} ünite`, { size: 16 }));
+      children.push(campaignSummaryTable());
+      children.push(textParagraph(`Tesis toplamı P: ${Number.isFinite(model.campaignSummary.totalActivePowerMw) ? model.campaignSummary.totalActivePowerMw.toFixed(2) : "—"} MW | Beklenen P: ${Number.isFinite(model.campaignSummary.expectedPowerMw) ? model.campaignSummary.expectedPowerMw.toFixed(2) : "—"} MW | Fark: ${Number.isFinite(model.campaignSummary.expectedPowerDifferenceMw) ? model.campaignSummary.expectedPowerDifferenceMw.toFixed(2) : "—"} MW`, { size: 15 }));
+    }
     else {
       const records = section.type === "summary" ? model.records : model.records.filter((record) => section.stepIds.includes(record.stepId));
+      if (section.type === "summary") children.push(textParagraph(`Otomatik değerlendirme: ${model.overallStatus} | Resmî çıktı statüsü: ${model.officialStatus}`, { bold: true, size: 16 }));
       children.push(summaryTable(records));
       if (section.type === "records") {
         for (const record of records) {
@@ -125,12 +152,6 @@ export async function buildDocxDocument(model) {
     borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE }, insideHorizontal: { style: BorderStyle.NONE }, insideVertical: { style: BorderStyle.NONE } },
     rows: [new TableRow({ children: model.signatures.map((signature, index) => cell(`\n\n________________________\n${signature.role}\n${signature.name}`, index === 2 ? TABLE_WIDTH - Math.floor(TABLE_WIDTH / 3) * 2 : Math.floor(TABLE_WIDTH / 3), { alignment: AlignmentType.CENTER, size: 16 })) })]
   }));
-  children.push(heading("ORİJİNAL FORMAT / KAYNAK BELGE REFERANSI", true));
-  children.push(textParagraph("Bu görsel yalnız bölüm/alan yapısı için referanstır; raporun tamamının piksel kopyası değildir."));
-  if (model.assets.referenceDataUrl) {
-    children.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new ImageRun({ data: dataUrlToUint8Array(model.assets.referenceDataUrl), transformation: { width: 420, height: 594 }, type: "jpg" })] }));
-  } else children.push(textParagraph("Bu rapor türü için ayrı referans görseli bulunmuyor.", { color: "8A5700" }));
-
   const header = new Header({ children: [textParagraph(`TEİAŞ-YHDA | ${model.reportType}`, { size: 15, color: "637585", after: 0 })] });
   const footer = new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `TEİAŞ-YHDA v${model.appVersion}  |  Sayfa `, size: 14, color: "637585", font: "Arial" }), new TextRun({ children: [PageNumber.CURRENT], size: 14, color: "637585", font: "Arial" }), new TextRun({ text: "/", size: 14, color: "637585", font: "Arial" }), new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 14, color: "637585", font: "Arial" })] })] });
 
@@ -166,4 +187,3 @@ export async function createDocxBuffer(model) {
 export async function createDocxBlob(model) {
   return new Blob([await createDocxBuffer(model)], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
 }
-

@@ -38,6 +38,12 @@ function duration(rows) {
   return number(rows.at(-1).time_s) - number(rows[0].time_s);
 }
 
+function responsePercent(responses, reserve, seconds) {
+  const values = responses.filter((item) => item.time >= 0 && item.time <= seconds).map((item) => item.value);
+  const response = values.length ? Math.max(...values) : Number.NaN;
+  return Number.isFinite(response) && reserve ? (response / Math.abs(reserve)) * 100 : Number.NaN;
+}
+
 function evaluatePfkReserve(record, metadata, plant) {
   const rows = record.rows;
   const pnom = number(metadata.PNOM_MW, 500);
@@ -59,10 +65,13 @@ function evaluatePfkReserve(record, metadata, plant) {
   const sampleSeconds = median(sampleDeltas(rows));
   const delayLimit = plant === "HES" ? 4 : 2;
   const passed = sampleSeconds <= 0.1005 && delay <= delayLimit && t50 <= 15 && t100 <= 30 && duration(rows) >= 900;
+  const trpA = responsePercent(responses, reserve, delayLimit);
+  const trpB = responsePercent(responses, reserve, 15);
+  const trpC = responsePercent(responses, reserve, 30);
   return {
     status: passed ? "GEÇTİ" : "KALDI",
-    detail: `Δtd=${formatMetric(delay)} s; t50=${formatMetric(t50)} s; t100=${formatMetric(t100)} s; dt=${formatMetric(sampleSeconds * 1000, 0)} ms`,
-    metrics: { delaySeconds: delay, t50Seconds: t50, t100Seconds: t100, sampleMs: sampleSeconds * 1000, durationSeconds: duration(rows) }
+    detail: `Δtd=${formatMetric(delay)} s; t50=${formatMetric(t50)} s; t100=${formatMetric(t100)} s; TRP-A/B/C=${formatMetric(trpA, 1)}/${formatMetric(trpB, 1)}/${formatMetric(trpC, 1)} %; dt=${formatMetric(sampleSeconds * 1000, 0)} ms`,
+    metrics: { delaySeconds: delay, t50Seconds: t50, t100Seconds: t100, trpA, trpB, trpC, sampleMs: sampleSeconds * 1000, durationSeconds: duration(rows) }
   };
 }
 
@@ -115,10 +124,29 @@ function evaluateHfk(record, metadata) {
 function evaluateRgdh(record, metadata) {
   if (record.step.kind !== "capacity") {
     const voltage = record.rows.map((row) => number(row.system_voltage_kv ?? row.bus_voltage_kv)).filter(Number.isFinite);
+    const reference = record.rows.map((row) => number(row.voltage_reference_kv)).filter(Number.isFinite);
+    if (voltage.length < 3 || reference.length < 2) {
+      return { status: "İNCELEME GEREKLİ", detail: "Gerilim kontrolü için sistem gerilimi ve gerilim referansı kanalları yeterli değil.", metrics: {} };
+    }
+    const baseline = average(voltage.slice(0, Math.min(5, voltage.length)));
+    const target = reference.at(-1);
+    const expectedChange = target - reference[0];
+    const threshold = Math.abs(expectedChange) * 0.2;
+    const eventIndex = reference.findIndex((value) => Math.abs(value - reference[0]) >= Math.max(0.001, threshold));
+    const eventTime = eventIndex >= 0 ? number(record.rows[eventIndex].time_s) : number(record.rows[0].time_s);
+    const direction = Math.sign(expectedChange || target - baseline) || 1;
+    const responseIndex = record.rows.findIndex((row, index) => index >= Math.max(eventIndex, 0) && direction * (number(row.system_voltage_kv ?? row.bus_voltage_kv) - baseline) >= Math.max(0.001, threshold));
+    const responseTime = responseIndex >= 0 ? number(record.rows[responseIndex].time_s) - eventTime : Number.NaN;
+    const oneSecond = record.rows.filter((row) => number(row.time_s) >= eventTime + 1).at(0);
+    const twoSecond = record.rows.filter((row) => number(row.time_s) >= eventTime + 2);
+    const oneSecondError = oneSecond ? Math.abs(number(oneSecond.system_voltage_kv ?? oneSecond.bus_voltage_kv) - target) : Number.NaN;
+    const stabilityStd = standardDeviation(twoSecond.map((row) => number(row.system_voltage_kv ?? row.bus_voltage_kv)));
+    const stable = Number.isFinite(stabilityStd) && stabilityStd <= Math.max(0.01, Math.abs(target) * 0.002);
+    const passed = responseTime <= 0.2 && oneSecondError <= Math.max(0.02, Math.abs(expectedChange) * 0.1) && stable;
     return {
-      status: "YÜKLENDİ",
-      detail: `Gerilim kontrolcüsü kaydı yüklendi; Vmin=${formatMetric(Math.min(...voltage))} kV, Vmax=${formatMetric(Math.max(...voltage))} kV.`,
-      metrics: { voltageMinKv: voltage.length ? Math.min(...voltage) : Number.NaN, voltageMaxKv: voltage.length ? Math.max(...voltage) : Number.NaN }
+      status: passed ? "GEÇTİ" : "KALDI",
+      detail: `Vctrl: tepki=${formatMetric(responseTime, 3)} s (200 ms); 1 s hata=${formatMetric(oneSecondError, 3)} kV; 2 s σ=${formatMetric(stabilityStd, 3)} kV; Vmin=${formatMetric(Math.min(...voltage))} kV; Vmax=${formatMetric(Math.max(...voltage))} kV.`,
+      metrics: { voltageMinKv: Math.min(...voltage), voltageMaxKv: Math.max(...voltage), voltageResponseSeconds: responseTime, voltageOneSecondErrorKv: oneSecondError, voltageStabilityStdKv: stabilityStd, voltageTargetKv: target }
     };
   }
   const qColumn = record.rows[0] && "reactive_power_mvar" in record.rows[0] ? "reactive_power_mvar" : "total_reactive_power_mvar";
@@ -127,21 +155,24 @@ function evaluateRgdh(record, metadata) {
     : number(metadata.Q_REQUIRED_OE_MVAR);
   const target = number(metadata.STEP_Q_TARGET_MVAR, defaultTarget);
   if (!Number.isFinite(target)) {
-    return { status: "YÜKLENDİ", detail: "Q zorunlu değeri girildiğinde otomatik kapasite değerlendirmesi yapılır.", metrics: {} };
+    return { status: "İNCELEME GEREKLİ", detail: "Q zorunlu değeri girildiğinde otomatik kapasite değerlendirmesi yapılır.", metrics: {} };
   }
   const tail = record.rows.slice(Math.max(0, record.rows.length - 600));
   const meanReactivePower = average(tail.map((row) => number(row[qColumn])));
-  const passed = Math.abs(meanReactivePower) >= 0.9 * Math.abs(target);
+  const stabilityStd = standardDeviation(tail.map((row) => number(row[qColumn])));
+  const stabilityPercent = Math.abs(meanReactivePower) > 1e-9 ? (stabilityStd / Math.abs(meanReactivePower)) * 100 : Number.NaN;
+  const passed = Math.abs(meanReactivePower) >= 0.9 * Math.abs(target) && stabilityPercent <= 5;
   return {
     status: passed ? "GEÇTİ" : "KALDI",
-    detail: `Son bölüm Qort=${formatMetric(meanReactivePower)} MVAr; zorunlu Q=${formatMetric(target)} MVAr`,
-    metrics: { meanReactivePowerMvar: meanReactivePower, targetReactivePowerMvar: target }
+    detail: `Qort=${formatMetric(meanReactivePower)} MVAr; zorunlu Q=${formatMetric(target)} MVAr; σ=${formatMetric(stabilityStd)} MVAr; kararlılık=${formatMetric(stabilityPercent, 2)} %.`,
+    metrics: { meanReactivePowerMvar: meanReactivePower, targetReactivePowerMvar: target, stabilityStdMvar: stabilityStd, stabilityPercent, durationSeconds: duration(record.rows) }
   };
 }
 
 function evaluateSfk(record, metadata, plant) {
   if (record.step.kind !== "agc_step") {
-    return { status: plant === "EDUEDT" ? "TEKNİK ÖN DEĞERLENDİRME" : "YÜKLENDİ", detail: "AGC/LFC durum ve alarm sinyalleri grafik incelemesine hazır.", metrics: {} };
+    const signalColumns = ["lmin", "lmax", "lloc", "lrem", "lman", "lmic", "lpwr", "genstat", "pfco"].filter((key) => key in (record.rows[0] ?? {}));
+    return { status: "İNCELEME GEREKLİ", detail: `AGC/LFC durum ve alarm sinyalleri (${signalColumns.join(", ") || "uygun kanal yok"}) grafik incelemesine hazır; otomatik kabul sonucu üretilmez.`, metrics: { signalColumns } };
   }
   const pnom = number(metadata.PNOM_MW, 100);
   const delays = [];
@@ -168,7 +199,7 @@ function evaluateSfk(record, metadata, plant) {
   const maximumDelay = delays.length ? Math.max(...delays) : Number.NaN;
   const detail = `Gecikme=${formatMetric(maximumDelay, 1)} s; max rampa=${formatMetric(maximumRamp)} MW/s`;
   return {
-    status: plant === "EDUEDT" ? "TEKNİK ÖN DEĞERLENDİRME" : "YÜKLENDİ",
+    status: "TEKNİK ÖN DEĞERLENDİRME",
     detail,
     metrics: { maximumDelaySeconds: maximumDelay, maximumRampMwPerSecond: maximumRamp }
   };
@@ -206,9 +237,8 @@ export function evaluateRecord(record, context) {
   if (service === "SFHM") return evaluateSfhm(record, metadata);
   const sampleMs = median(sampleDeltas(record.rows)) * 1000;
   return {
-    status: "YÜKLENDİ",
-    detail: `Veri yüklendi; ${record.rows.length} satır, dt=${formatMetric(sampleMs, 1)} ms.`,
+    status: "İNCELEME GEREKLİ",
+    detail: `Veri yüklendi; ${record.rows.length} satır, dt=${formatMetric(sampleMs, 1)} ms. Otomatik kabul ölçütü tanımlı değildir.`,
     metrics: { rowCount: record.rows.length, sampleMs, durationSeconds: duration(record.rows) }
   };
 }
-

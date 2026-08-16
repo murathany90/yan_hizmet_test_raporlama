@@ -80,7 +80,13 @@ export function drawChart(canvas, rows, series, view, options = {}) {
   context.fillRect(0, 0, width, height);
 
   const data = dataForView(rows, series, view, options.maxPoints ?? 4_000);
-  if (!data.length) return;
+  if (!data.length || !series.length) {
+    context.fillStyle = "#526a7a";
+    context.font = `${12 * pixelRatio}px Arial`;
+    context.textAlign = "center";
+    context.fillText("Gösterilecek seri seçilmedi.", width / 2, height / 2);
+    return;
+  }
   const leftSeries = series.filter((item) => item.axis !== "right");
   const rightSeries = series.filter((item) => item.axis === "right");
   const [leftMin, leftMax] = paddedExtent(data, leftSeries);
@@ -233,17 +239,21 @@ export class ChartManager {
       this.frames.delete(viewKey);
       const entry = this.registry.get(viewKey);
       if (!entry || !entry.details.open) return;
-      drawChart(entry.canvas, entry.record.rows, entry.series, viewFor(this.state, viewKey, entry.record.rows));
+      drawChart(entry.canvas, entry.record.rows, this.visibleSeries(viewKey, entry.series), viewFor(this.state, viewKey, entry.record.rows));
       entry.minimumInput.value = String(this.state.chartViews.get(viewKey).minimum);
       entry.maximumInput.value = String(this.state.chartViews.get(viewKey).maximum);
     }));
+  }
+
+  visibleSeries(viewKey, series) {
+    return series.filter((item) => this.state.chartSeriesVisibility.get(`${viewKey}:${item.key}`) !== false);
   }
 
   render(container, record, service, modeKey) {
     this.resizeObserver.disconnect();
     this.registry.clear();
     container.replaceChildren();
-    const sets = seriesSetsFor(record, service);
+    const sets = record.seriesSets ?? seriesSetsFor(record, service);
     sets.forEach((set, index) => {
       const viewKey = `${modeKey}:${record.step.id}:${index}`;
       const series = normalizeSeries(set.series);
@@ -286,10 +296,23 @@ export class ChartManager {
       const legend = document.createElement("div");
       legend.className = "legend";
       series.forEach((item, seriesIndex) => {
-        const legendItem = document.createElement("span");
+        const seriesKey = `${viewKey}:${item.key}`;
+        if (!this.state.chartSeriesVisibility.has(seriesKey)) this.state.chartSeriesVisibility.set(seriesKey, true);
+        const legendItem = document.createElement("button");
+        legendItem.type = "button";
         legendItem.className = "legend-item";
         legendItem.style.setProperty("--series-color", COLORS[seriesIndex % COLORS.length]);
         legendItem.textContent = `${item.label} [${item.unit}]`;
+        legendItem.dataset.seriesKey = seriesKey;
+        legendItem.setAttribute("aria-pressed", String(this.state.chartSeriesVisibility.get(seriesKey) !== false));
+        legendItem.title = "Seriyi göster/gizle";
+        legendItem.addEventListener("click", () => {
+          const visible = this.state.chartSeriesVisibility.get(seriesKey) !== false;
+          this.state.chartSeriesVisibility.set(seriesKey, !visible);
+          legendItem.classList.toggle("hidden", visible);
+          legendItem.setAttribute("aria-pressed", String(!visible));
+          this.scheduleDraw(viewKey);
+        });
         legend.append(legendItem);
       });
       inner.append(toolbar, canvas, legend);
@@ -326,7 +349,7 @@ export class ChartManager {
         } else if (action === "png") {
           canvas.toBlob((blob) => blob && this.onDownload(blob, `${safeFilename(record.name)}-${index + 1}.png`), "image/png");
         } else if (action === "svg") {
-          const svg = chartToSvg(record.rows, series, currentView, set.title);
+          const svg = chartToSvg(record.rows, this.visibleSeries(viewKey, series), currentView, set.title);
           await this.onDownload(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }), `${safeFilename(record.name)}-${index + 1}.svg`);
         }
       });
@@ -403,7 +426,7 @@ export class ChartManager {
   }
 
   renderRecordImages(record, service) {
-    return seriesSetsFor(record, service).map((set) => {
+    return (record.seriesSets ?? seriesSetsFor(record, service)).map((set) => {
       const series = normalizeSeries(set.series);
       const [fullMin, fullMax] = fullTimeExtent(record.rows);
       const view = { minimum: fullMin, maximum: fullMax, fullMin, fullMax };

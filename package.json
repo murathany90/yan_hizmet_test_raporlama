@@ -1,6 +1,6 @@
 {
   "name": "teias-yhda",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "description": "TEİAŞ Yan Hizmetler Doğrulama Aracı",
   "type": "module",
@@ -24,6 +24,7 @@
     "@tauri-apps/plugin-dialog": "2.7.2",
     "@tauri-apps/plugin-fs": "2.5.1",
     "docx": "9.7.1",
+    "fflate": "0.8.3",
     "pdfmake": "0.2.23"
   },
   "devDependencies": {

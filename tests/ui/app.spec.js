@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 test("loads PFK files, renders charts, criteria and reports without console errors", async ({ page }) => {
@@ -27,17 +28,48 @@ test("loads PFK files, renders charts, criteria and reports without console erro
   await expect(page.locator("details.chart-details").first()).not.toHaveAttribute("open", "");
   await page.locator("details.chart-details").first().locator("summary").click();
   await expect(page.locator("details.chart-details").first()).toHaveAttribute("open", "");
+  const legend = page.locator(".legend-item").first();
+  await legend.click();
+  await expect(legend).toHaveAttribute("aria-pressed", "false");
+  await page.getByRole("button", { name: "Zoom +" }).first().click();
+  await expect(legend).toHaveAttribute("aria-pressed", "false");
 
   await page.getByRole("button", { name: "4. Kriterler" }).click();
-  await expect(page.getByRole("heading", { name: "Test Prosedürü" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Teknik Katılım ve Başarı Kriterleri" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Ön Kontroller ve İzlenecek Sinyaller" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Test Nasıl Yapılır" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Kontroller" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Değerlendirme" })).toBeVisible();
 
   await page.getByRole("button", { name: "3. Raporlar" }).click();
   await page.getByRole("button", { name: "Önizleme Oluştur" }).click();
   await expect(page.locator("#reportPaper")).toContainText("PRİMER FREKANS KONTROL PERFORMANS TEST RAPORU");
   await expect(page.locator("#reportPaper")).toContainText("RAPOR İÇİNDE KULLANILAN DEĞİŞKENLER");
+  await expect(page.locator("#reportPaper")).toContainText("İNCELEME GEREKLİ");
+  await expect(page.locator("#reportPaper")).not.toContainText("ORİJİNAL FORMAT / KAYNAK BELGE REFERANSI");
   expect(errors).toEqual([]);
+});
+
+test("downloads Turkish UTF-8 BOM CSV and keeps PFK campaign controls scoped", async ({ page }) => {
+  await page.goto("/");
+  await expect.poll(() => page.evaluate(() => window.__YHDA_READY__)).toBe(true);
+  await page.locator("#meta-TESIS_ADI").fill("Iğdır Şaşı Üretim Tesisi");
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Şablon İndir" }).first().click();
+  const download = await downloadPromise;
+  const downloadPath = await download.path();
+  const bytes = await readFile(downloadPath);
+  expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+  const text = new TextDecoder("utf-8").decode(bytes);
+  expect(text).toContain("# TESIS_ADI=Iğdır Şaşı Üretim Tesisi");
+  expect(text).not.toMatch(/Ã|Ä|Å/);
+
+  await expect(page.locator("#pfkCampaignCard")).toBeVisible();
+  await page.locator("#pfkCampaignSetup").click();
+  await expect(page.getByRole("heading", { name: "Santral / Ünite Yapısı" })).toBeVisible();
+  await expect(page.locator("#pfkCampaignZip")).toBeVisible();
+  await page.getByRole("button", { name: "2. Grafikler" }).click();
+  await expect(page.getByRole("button", { name: "Ünite", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Karşılaştırma" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Santral", exact: true })).toBeVisible();
 });
 
 test("treats CSV metadata as text and keeps mobile navigation usable", async ({ page }) => {

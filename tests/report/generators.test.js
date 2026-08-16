@@ -33,6 +33,29 @@ describe("report generators", () => {
     expect(model.missingSteps.length).toBe(model.expectedStepCount - 1);
   });
 
+  it("maps RGDH C1 and C2 headings without using a source-reference page", () => {
+    const make = (plant, records) => buildReportModel({
+      service: "RGDH", plant, config: CONFIGS[`RGDH:${plant}`], metadata: {}, reportType: "RGDH Performans Test Raporu", reportNote: "", records, chartProvider: () => []
+    });
+    const c1 = make("KONV", []);
+    const c2 = make("RESGES", []);
+    expect(c1.sections.map((section) => section.heading)).toEqual(expect.arrayContaining(["C) AŞIRI İKAZ", "D) DÜŞÜK İKAZ", "E) DEĞERLENDİRME", "F) SONUÇ"]));
+    expect(c2.sections.map((section) => section.heading)).toEqual(expect.arrayContaining(["C) MAKSİMUM ÇIKIŞ / AŞIRI İKAZ KAPASİTE TESTLERİ", "D) ORTA ÇALIŞMA NOKTASI / %50 TESTLERİ", "E) DÜŞÜK ÇALIŞMA NOKTASI / %20 TESTLERİ", "F) GERİLİM KONTROLCÜSÜ PERFORMANS TESTLERİ", "G) SONUÇ"]));
+    expect(JSON.stringify(c2)).not.toContain("referenceDataUrl");
+  });
+
+  it("creates a PFK campaign model with unit summary and guarded official status", () => {
+    const config = CONFIGS["PFK:HES"];
+    const model = buildReportModel({
+      service: "PFK", plant: "HES", config, metadata: { PLANT_TOTAL_INSTALLED_MW: "100" }, reportType: "Performans Test Raporu", reportNote: "", chartProvider: () => [],
+      campaign: { enabled: true, campaignId: "C1", facilityId: "F1", eventId: "E1", runId: "R1", units: [{ unitId: "U1", unitName: "Ünite 1" }, { unitId: "U2", unitName: "Ünite 2" }] },
+      records: [{ name: "u1.csv", step: config.steps[0], rows: [{ time_s: 0, active_power_mw: 50 }], sourceMetadata: { CAMPAIGN_ID: "C1", UNIT_ID: "U1", UNIT_NAME: "Ünite 1", RUN_ID: "R1" }, analysis: { status: "GEÇTİ", detail: "ok", metrics: {} }, validation: { warnings: [] } }]
+    });
+    expect(model.campaignSummary.units).toHaveLength(2);
+    expect(model.officialStatus).toBe("İNCELEME GEREKLİ");
+    expect(model.sections.map((section) => section.type)).toContain("campaign-summary");
+  });
+
   it("creates a real PDF binary", async () => {
     const buffer = await createPdfBuffer(fixtureModel());
     const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);

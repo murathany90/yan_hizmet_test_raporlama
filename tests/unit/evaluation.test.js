@@ -17,6 +17,7 @@ describe("service evaluation", () => {
     });
     expect(result.status).toBe("GEÇTİ");
     expect(result.metrics.t100Seconds).toBeLessThanOrEqual(30);
+    expect(result.metrics.trpC).toBeGreaterThanOrEqual(98);
   });
 
   it("keeps HFK output in technical pre-evaluation status", () => {
@@ -31,18 +32,23 @@ describe("service evaluation", () => {
     expect(result.status).toBe("TEKNİK ÖN DEĞERLENDİRME");
   });
 
-  it("reports loaded RGDH voltage-control data", () => {
-    const result = evaluateRecord(record({ id: "VOLTAGE_STEP", kind: "voltage_control" }, [
-      { time_s: 0, system_voltage_kv: 378 }, { time_s: 1, system_voltage_kv: 382 }
-    ]), { service: "RGDH", plant: "KONV", metadata: {} });
-    expect(result.status).toBe("YÜKLENDİ");
-    expect(result.metrics.voltageMinKv).toBe(378);
+  it("evaluates RGDH C2 voltage control with response and stability metrics", () => {
+    const rows = Array.from({ length: 31 }, (_, index) => {
+      const time_s = index / 10;
+      const voltage_reference_kv = time_s < 1 ? 380 : 384;
+      const system_voltage_kv = time_s < 1.1 ? 380 : Math.min(384, 380 + (time_s - 1) * 20);
+      return { time_s, system_voltage_kv, voltage_reference_kv };
+    });
+    const result = evaluateRecord(record({ id: "VCTRL_PLUS1", kind: "voltage_control" }, rows), { service: "RGDH", plant: "RESGES", metadata: {} });
+    expect(result.status).toBe("GEÇTİ");
+    expect(result.metrics.voltageResponseSeconds).toBeLessThanOrEqual(0.2);
+    expect(result.metrics.voltageStabilityStdKv).toBeLessThanOrEqual(0.01);
   });
 
-  it("keeps EDÜ SFK in draft status", () => {
+  it("keeps SFK signal-only data in review status", () => {
     const result = evaluateRecord(record({ id: "LFC_SIGNAL_CHECK", kind: "signal_check" }, [{ time_s: 0 }]), {
       service: "SFK", plant: "EDUEDT", metadata: {}
     });
-    expect(result.status).toBe("TEKNİK ÖN DEĞERLENDİRME");
+    expect(result.status).toBe("İNCELEME GEREKLİ");
   });
 });
