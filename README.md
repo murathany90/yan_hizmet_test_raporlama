@@ -1,8 +1,17 @@
-# TEİAŞ-YHDA v0.6.0
+# TEİAŞ-YHDA v0.6.1
 
 TEİAŞ Yan Hizmetler Doğrulama Aracı; PFK, RGDH, HFK, SFHM ve SFK test kayıtlarını yerel olarak doğrulayan, grafikleyen ve ortak bir rapor modelinden PDF/DOCX çıktısı üreten çevrimdışı odaklı bir web/Tauri uygulamasıdır.
 
 > HFK, SFHM ve resmî ayrıntılı formatı repository kaynaklarında bulunmayan EDÜ/EDT-SFK çıktıları yalnız **Teknik Ön Değerlendirme / Taslak** statüsündedir; resmî TEİAŞ raporu veya sertifikası yerine geçmez.
+
+## v0.6.1 — PFK kampanya ve resmî raporlama güvenliği
+
+- PFK için varsayılan tek ünite akışını koruyan, isteğe bağlı çok üniteli kampanya kartı: `CAMPAIGN_ID + tesis + ünite + adım + RUN_ID` rotası.
+- PFK kampanya şablon ZIP'i (`campaign.csv`, SHA-256 kanıt alanlı `manifest.csv`, `U1/...`) ve tüm seçili hizmet/tesis şablonlarını ZIP indirme.
+- Çok üniteli PFK'da Ünite / Karşılaştırma / Santral grafikleri, ünite KPI özeti ve birim sertifikalarının ZIP dışa aktarımı.
+- Seri bazında görünürlük anahtarları; görünür serilere göre otomatik ölçek ve PNG/SVG dışa aktarımı, rapor için zorunlu serilerin korunması.
+- A4 kapaklı PDF/DOCX, test ekipmanı-kalibrasyon ve kanal/ölçek tabloları, PFK A–G yapısı, RGDH C1/C2 eşlemesi ve SFK sinyal/AGC kapsamı.
+- Nihai çıktıda kaynak format görseli bulunmaz. Statü, veri tamamlığına göre `Taslak / İnceleme gerekli / İmza öncesi` ile sınırlandırılır.
 
 ## Öne çıkanlar
 
@@ -60,6 +69,7 @@ npm.cmd run tauri -- build
 4. Grafikler sekmesinde adımı seçin; tekerlek/düğmelerle zoom, sürüklemeyle pan yapın veya zaman aralığını sayısal girin.
 5. Raporlar sekmesinde rapor tipini seçip önizleme, PDF, Word veya yazdırma aksiyonunu kullanın.
 6. Kriterler sekmesinde test prosedürü, teknik kriterler ve ön kontrol/sinyal listesini birlikte inceleyin.
+7. Çok üniteli PFK gerekiyorsa yalnız PFK çalışma alanındaki **Santral / Ünite Yapısı** kartından etkinleştirin; kampanya ZIP'indeki CSV'leri değiştirmeden kullanın.
 
 ## CSV sözleşmesi
 
@@ -71,6 +81,8 @@ CSV dosyaları UTF-8 BOM ve `;` ayırıcı kullanır. Ondalık sayılarda hem `1
 # STEP_ID=RES_MAX_NEG200
 # SAMPLE_PERIOD_MS=100
 ```
+
+PFK çok üniteli kampanya CSV'lerinde buna ek olarak `CAMPAIGN_ID`, `FACILITY_ID`, `TEST_SCOPE=MULTI_UNIT`, `ENTITY_TYPE`, `ENTITY_ID`, `UNIT_ID`, `UNIT_NAME`, `UNIT_COUNT`, `EVENT_ID` ve `RUN_ID` zorunludur. Bu alanlar PFK dışındaki rotalarda kabul edilmez.
 
 Yeni dosya üretirken `CSV_Sablonlari/` altındaki ilgili şablonu kullanın. `Ornek_Veriler/` altındaki kayıtlar yazılım doğrulama fixture’larıdır; gerçek saha verisi değildir.
 
@@ -128,5 +140,7 @@ Rapor görselleri Vite/Tauri paketine göreli asset olarak alınır; çalışma 
 ## Denetim ve sürüm notları
 
 - Ayrıntılı ilk durum, kök nedenler ve doğrulama kanıtları: [`docs/REPO_AUDIT.md`](docs/REPO_AUDIT.md)
+- v0.6.1 başlangıç denetimi: [`docs/V061_AUDIT.md`](docs/V061_AUDIT.md)
+- Kaynak format → YHDA alan eşlemesi: [`docs/TEIAS_REPORT_FORMAT_MAPPING.md`](docs/TEIAS_REPORT_FORMAT_MAPPING.md)
 - Sürüm değişiklikleri: [`CHANGELOG.md`](CHANGELOG.md)
 - Eski tek-dosya uygulama yalnız karşılaştırma/migrasyon referansı olarak `TEIAS_YHDA_v0_5_1.html` içinde korunur.

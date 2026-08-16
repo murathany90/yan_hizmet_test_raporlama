@@ -2,6 +2,22 @@
 
 Bu proje [Semantic Versioning](https://semver.org/) yaklaşımını izler.
 
+## [0.6.1] - 2026-08-16
+
+### Eklendi
+
+- PFK'ye özel, varsayılan tek üniteyi koruyan çok üniteli kampanya modeli, benzersiz kayıt rotası ve kampanya/kanıt manifestli ZIP şablonları.
+- Tüm seçili test adımlarını ZIP olarak indirme; PFK birim sertifikalarını DOCX ZIP olarak dışa aktarma.
+- PFK Ünite / Karşılaştırma / Santral grafikleri, seri görünürlük düğmeleri ve kalıcı grafik görünüm durumu.
+- Rapor şablon katmanı, ayrı A4 kapak, ekipman-kalibrasyon ve kanal/ölçek tabloları, PFK kampanya özeti ile RGDH C1/C2 bölüm eşlemesi.
+- UTF-8 BOM tarayıcı indirme, PFK kampanya rota/ZIP, seri görünürlüğü, kriter akordeonu, PFK kampanya raporu ve RGDH C1/C2 için odaklı testler.
+
+### Düzeltildi
+
+- Nihai PDF/DOCX çıktılarından orijinal format/kaynak görseli kaldırıldı.
+- RGDH gerilim kontrol ve kapasite kayıtları ile SFK sinyal kayıtlarının `Yüklendi` olarak sonuçlandırılması engellendi; ölçülebilir sonuç veya `İnceleme gerekli` statüsü uygulanır.
+- Resmî çıktı güvenliği `Taslak / İnceleme gerekli / İmza öncesi` statülerine bağlandı.
+
 ## [0.6.0] - 2026-08-16
 
 ### Eklendi
