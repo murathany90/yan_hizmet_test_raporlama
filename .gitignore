@@ -16,6 +16,9 @@ qa-artifacts/
 qa_artifacts/
 qa_tools/
 
+# Local source/reference documents may contain signed or field data
+docs/test_dosyaları/
+
 # Local configuration, credentials and editor state
 .env
 .env.*
