@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { CONFIGS } from "../../src/app/config-v062.js";
 import { buildReportModel } from "../../src/report/model.js";
-import { createPdfBuffer } from "../../src/report/pdf.js";
-import { createDocxBuffer } from "../../src/report/docx.js";
+import { createPdfBuffer, makePdfDefinition } from "../../src/report/pdf.js";
+import { createDocxBlob, createDocxBuffer } from "../../src/report/docx.js";
+import { DEFAULT_DOCUMENT_SETTINGS } from "../../src/app/settings.js";
+import { renderReportPreview } from "../../src/report/preview.js";
+import { strFromU8, unzipSync } from "fflate";
 
 function fixtureModel() {
   const config = CONFIGS["PFK:HES"];
@@ -44,6 +47,17 @@ describe("report generators", () => {
     expect(JSON.stringify(c2)).not.toContain("referenceDataUrl");
   });
 
+  it("routes every RGDH C.2 step to its single prescribed section", () => {
+    const config = CONFIGS["RGDH:RESGES"];
+    const records = config.steps.map((step) => ({ name: `${step.id}.csv`, step, rows: [], analysis: { status: "GEÇTİ", detail: "ok", metrics: {} }, validation: { warnings: [] } }));
+    const model = buildReportModel({ service: "RGDH", plant: "RESGES", config, metadata: {}, reportType: "RGDH Performans Test Raporu", reportNote: "", records, chartProvider: () => [] });
+    const byHeading = (start) => model.sections.find((section) => section.heading.startsWith(start)).stepIds;
+    expect(byHeading("C)")).toEqual(["OE_MAX", "UE_MAX"]);
+    expect(byHeading("D)")).toEqual(["OE_P50", "UE_P50"]);
+    expect(byHeading("E)")).toEqual(["OE_P20", "UE_P20"]);
+    expect(byHeading("F)")).toEqual(["VCTRL_PLUS1", "VCTRL_MINUS1"]);
+  });
+
   it("creates a PFK campaign model with unit summary and guarded official status", () => {
     const config = CONFIGS["PFK:HES"];
     const model = buildReportModel({
@@ -55,6 +69,45 @@ describe("report generators", () => {
     expect(model.officialStatus).toBe("İNCELEME GEREKLİ");
     expect(model.sections.map((section) => section.type)).toContain("campaign-summary");
   });
+
+  it("keeps PFK campaign report records scoped by campaign, unit, step and run", () => {
+    const config = CONFIGS["PFK:HES"];
+    const step = config.steps.find((item) => item.id === "RES_MAX_NEG200");
+    const makeRecord = (unitId) => ({ name: `${unitId}.csv`, step, rows: [], sourceMetadata: { CAMPAIGN_ID: "C1", UNIT_ID: unitId, UNIT_NAME: `Ünite ${unitId}`, RUN_ID: "R1" }, analysis: { status: "GEÇTİ", detail: unitId, metrics: {} }, validation: { warnings: [] } });
+    const model = buildReportModel({
+      service: "PFK", plant: "HES", config, metadata: {}, reportType: "Performans Test Raporu", reportNote: "", chartProvider: () => [],
+      campaign: { enabled: true, campaignId: "C1", runId: "R1", units: [{ unitId: "U1", unitName: "Ünite U1" }, { unitId: "U2", unitName: "Ünite U2" }] },
+      records: [makeRecord("U1"), makeRecord("U2"), { ...makeRecord("U1"), name: "legacy-U1.csv", sourceMetadata: { CAMPAIGN_ID: "C0", UNIT_ID: "U1", UNIT_NAME: "Eski Ünite", RUN_ID: "R0" } }]
+    });
+    const maximum = model.sections.find((section) => section.heading.startsWith("C)"));
+    expect(maximum.groups[0].items[0].recordKeys).toEqual(["C1\u001fU1\u001fRES_MAX_NEG200\u001fR1"]);
+    expect(maximum.groups[1].items[0].recordKeys).toEqual(["C1\u001fU2\u001fRES_MAX_NEG200\u001fR1"]);
+    expect(model.records.map((record) => record.filename)).not.toContain("legacy-U1.csv");
+    const preview = renderReportPreview(model);
+    const firstUnitSection = preview.slice(preview.indexOf("C.1"), preview.indexOf("C.2"));
+    expect(firstUnitSection).toContain("U1.csv");
+    expect(firstUnitSection).not.toContain("U2.csv");
+  });
+
+  it("uses unit-specific certificate metadata and scoped settings in preview, PDF and DOCX", async () => {
+    const config = CONFIGS["PFK:HES"];
+    const step = config.steps.find((item) => item.id === "RES_MAX_NEG200");
+    const settings = { ...DEFAULT_DOCUMENT_SETTINGS, scopedTexts: { PFK: { certificate: { certificateValidityText: "U2 için yalnız bu geçerlilik metni kullanılmalıdır." } } } };
+    const model = buildReportModel({
+      service: "PFK", plant: "HES", config, metadata: { TESIS_ADI: "Test Tesisi", UNIT_ID: "U2", UNIT_NAME: "Ünite İki", PNOM_MW: "90", RPMAX_MW: "12", REPORT_NO: "U2-01" },
+      reportType: "Test Sertifikası", reportNote: "", settings, chartProvider: () => [],
+      records: [{ name: "U2.csv", step, rows: [], analysis: { status: "GEÇTİ", detail: "ok", metrics: {} }, validation: { warnings: [] } }]
+    });
+    expect(model.documentText.certificateValidityText).toContain("U2 için");
+    expect(renderReportPreview(model)).toContain("Ünite İki");
+    const pdfDefinition = JSON.stringify(makePdfDefinition(model));
+    expect(pdfDefinition).toContain("U2 için yalnız bu geçerlilik metni");
+    expect(pdfDefinition).toContain("90");
+    const docx = await createDocxBuffer(model);
+    const documentXml = strFromU8(unzipSync(docx)["word/document.xml"]);
+    expect(documentXml).toContain("90");
+    expect(documentXml).toContain("U2 için yalnız bu geçerlilik metni");
+  }, 30_000);
 
   it("creates a real PDF binary", async () => {
     const buffer = await createPdfBuffer(fixtureModel());
@@ -68,5 +121,14 @@ describe("report generators", () => {
     const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
     expect(String.fromCharCode(...bytes.slice(0, 2))).toBe("PK");
     expect(bytes.byteLength).toBeGreaterThan(5_000);
+  }, 30_000);
+
+  it("creates a browser DOCX Blob with a real Word VML watermark", async () => {
+    const blob = await createDocxBlob(fixtureModel());
+    expect(blob.type).toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    const archive = unzipSync(new Uint8Array(await blob.arrayBuffer()));
+    const headerXml = strFromU8(archive["word/header1.xml"]);
+    expect(headerXml).toContain("TEIASWatermark");
+    expect(headerXml).toContain("v:shape");
   }, 30_000);
 });

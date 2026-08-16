@@ -10,7 +10,11 @@ const table = (headers, rows, widths, fontSize = 7) => {
   const emptyRow = () => headers.map((_, index) => index === 0 ? "Yüklenmiş kayıt yok" : "—");
   return { table: { headerRows: 1, widths, body: [headers, ...(rows.length ? rows : [emptyRow()])] }, layout: "lightHorizontalLines", fontSize, margin: [0, 4, 0, 8] };
 };
-const selected = (model, ids = []) => model.records.filter((record) => ids.includes(record.stepId));
+const selected = (model, selection = []) => {
+  if (Array.isArray(selection)) return model.records.filter((record) => selection.includes(record.stepId));
+  if (selection.recordKeys?.length) return model.records.filter((record) => selection.recordKeys.includes(record.recordKey));
+  return model.records.filter((record) => selection.stepIds?.includes(record.stepId));
+};
 const summaryTable = (records) => table(["Test adımı", "CSV", "Durum", "Hesap / not"], records.map((record) => [record.name, record.filename, record.status, record.detail]), ["*", 90, 58, "*"], 6.8);
 const evidenceTable = (model) => table(["Dosya", "SHA-256", "Ünite", "STEP_ID", "Satır", "Başlangıç", "Bitiş", "ms"], model.evidence.map((item) => [item.filename, item.sha256, item.unitId, item.stepId, String(item.rowCount), item.start, item.end, Number.isFinite(item.sampleMs) ? item.sampleMs.toFixed(3) : "—"]), [50, 105, 30, 55, 28, 75, 75, 24], 5.2);
 
@@ -29,7 +33,7 @@ function recordContent(records, charts = true) {
 function groupedContent(model, section) {
   return section.groups.flatMap((group) => {
     const items = group.items ?? [group];
-    return [{ text: group.heading, style: "subHeading" }, ...items.flatMap((item) => [group.items ? { text: item.heading, bold: true, fontSize: 8, margin: [0, 5, 0, 1] } : null, ...recordContent(selected(model, item.stepIds))].filter(Boolean))];
+    return [{ text: group.heading, style: "subHeading" }, ...items.flatMap((item) => [group.items ? { text: item.heading, bold: true, fontSize: 8, margin: [0, 5, 0, 1] } : null, ...recordContent(selected(model, item))].filter(Boolean))];
   });
 }
 
@@ -39,7 +43,7 @@ function campaignContent(summary) {
 }
 
 function minutesContent(model) {
-  return [model.documentText.minutesIntroduction, model.documentText.operationSafety, model.documentText.testMethod].map((text) => ({ text, fontSize: 8.5, lineHeight: 1.25, margin: [0, 0, 0, 7] })).concat([table(["Santral / ünite detayı", "Değer"], [["Türbin / jeneratör", model.metadata.TURBINE_GENERATOR_DESCRIPTION || "—"], ["Nominal güç", `${model.metadata.PNOM_MW || "—"} MW`], ["Frekans simülasyonu", model.metadata.SIGNAL_GENERATOR || "—"], ["İşletme modu", model.metadata.UNIT_OPERATION_MODE || model.metadata.PFK_OPERATION_MODE || "—"]], [145, "*"], 7.4)]);
+  return [model.documentText.minutesIntroduction, model.documentText.operationSafety, model.documentText.testMethod, model.documentText.minutesResult].map((text) => ({ text, fontSize: 8.5, lineHeight: 1.25, margin: [0, 0, 0, 7] })).concat([table(["Santral / ünite detayı", "Değer"], [["Türbin / jeneratör", model.metadata.TURBINE_GENERATOR_DESCRIPTION || "—"], ["Nominal güç", `${model.metadata.PNOM_MW || "—"} MW`], ["Frekans simülasyonu", model.metadata.SIGNAL_GENERATOR || "—"], ["İşletme modu", model.metadata.UNIT_OPERATION_MODE || model.metadata.PFK_OPERATION_MODE || "—"]], [145, "*"], 7.4)]);
 }
 
 function certificateContent(model) {
@@ -50,7 +54,7 @@ function certificateContent(model) {
     { text: `Sertifika No: ${model.metadata.REPORT_NO || "—"}`, alignment: "right", fontSize: 9 },
     { text: model.title, alignment: "center", bold: true, color: "#063f68", fontSize: 16, margin: [20, 8, 20, 14] },
     { text: model.documentText.certificateIntroduction, alignment: "justify", fontSize: 9, lineHeight: 1.25, margin: [0, 0, 0, 12] },
-    table(["Tesis", "Ünite", "Test tarih aralığı", "Belge durumu"], [[model.metadata.TESIS_ADI || "—", model.metadata.UNIT_ID || "Tesis kapsamı", model.metadata.TEST_DATE || "—", model.officialStatus]], ["*", 95, 105, 90], 7.1),
+    table(["Tesis", "Ünite", "Test tarih aralığı", "Belge durumu"], [[model.metadata.TESIS_ADI || "—", `${model.metadata.UNIT_ID || "Tesis kapsamı"} — ${model.metadata.UNIT_NAME || model.metadata.UNIT_ID || ""}`, model.metadata.TEST_DATE || "—", model.officialStatus]], ["*", 95, 105, 90], 7.1),
     { text: "Test cihazı bilgileri", bold: true, fontSize: 9 },
     table(["Marka", "Model", "Seri no", "Kalibrasyon"], [[device.brand || "—", device.model || "—", device.serialNo || "—", `${device.calibrationNo || "—"} / ${device.calibrationDate || "—"}`]], ["*", "*", 100, 130], 7.2),
     { text: model.documentText.draftWarning || "İMZA ÖNCESİ / TASLAK", bold: true, alignment: "center", color: "#8a5700", margin: [0, 22, 0, 0] },
@@ -60,7 +64,7 @@ function certificateContent(model) {
     { text: "SONUÇ TABLOSU", alignment: "center", bold: true, color: "#063f68", fontSize: 15, margin: [0, 28, 0, 14] },
     table(["Test", "Pnom", "Pset", "ΔP", "Etkinleşme s", "Sürdürme s", "TRP A", "TRP B", "TRP C", "Ölü bant", "Sonuç"], reserve.map((record) => [record.name, model.metadata.PNOM_MW || "—", record.stepId.includes("MAX") ? model.metadata.PSET_MAX_MW || "—" : model.metadata.PSET_MIN_MW || "—", model.metadata.RPMAX_MW || "—", Number.isFinite(record.metrics.delaySeconds) ? record.metrics.delaySeconds.toFixed(2) : "—", Number.isFinite(record.metrics.durationSeconds) ? record.metrics.durationSeconds.toFixed(1) : "—", Number.isFinite(record.metrics.trpA) ? record.metrics.trpA.toFixed(1) : "—", Number.isFinite(record.metrics.trpB) ? record.metrics.trpB.toFixed(1) : "—", Number.isFinite(record.metrics.trpC) ? record.metrics.trpC.toFixed(1) : "—", model.metadata.DEADBAND_MHZ || "—", record.status]), [70, 34, 34, 34, 45, 45, 35, 35, 35, 35, 44], 5.5),
     { text: model.documentText.certificateResult, fontSize: 8.5, lineHeight: 1.25, margin: [0, 13, 0, 8] },
-    { text: model.documentText.testResult, fontSize: 8.5, lineHeight: 1.25, margin: [0, 0, 0, 12] },
+    { text: model.documentText.certificateValidityText, fontSize: 8.5, lineHeight: 1.25, margin: [0, 0, 0, 12] },
     { text: `Düzenlenme tarihi: ${new Date().toLocaleDateString("tr-TR")}`, fontSize: 8 },
     { columns: model.signatures.map((signature) => ({ width: "*", stack: [{ text: "\n\n______________________", alignment: "center" }, { text: signature.role, bold: true, alignment: "center", fontSize: 7 }, { text: signature.name, alignment: "center", fontSize: 7 }] })), columnGap: 8, margin: [0, 20, 0, 0] },
     { text: model.documentText.draftWarning || "İMZA ÖNCESİ / TASLAK", bold: true, alignment: "center", color: "#8a5700", margin: [0, 20, 0, 0] },
@@ -74,10 +78,12 @@ function sectionContent(section, model) {
   if (section.type === "participants") return [table(["Alan", "Değer"], [["Test ekibi / katılımcılar", model.metadata.TEST_TEAM || "—"], ["Raporu hazırlayan", model.metadata.REPORT_PREPARED_BY || "—"]], [150, "*"], 7.7)];
   if (section.type === "minutes") return minutesContent(model);
   if (section.type === "campaign-summary") return campaignContent(model.campaignSummary);
-  if (section.type === "evidence") return [{ text: "SHA-256 özeti elektronik imza değildir; ham CSV arşiv zinciri için izlenebilirlik sağlar.", fontSize: 7.5 }, evidenceTable(model)];
+  if (section.type === "evidence") return [{ text: "SHA-256 özeti elektronik imza değildir; ham CSV arşiv zinciri için izlenebilirlik sağlar.", fontSize: 7.5 }, { text: model.documentText.attachmentsDescription, fontSize: 7.5, margin: [0, 2, 0, 4] }, evidenceTable(model)];
   if (section.type === "summary") return [{ text: model.documentText.testResult, fontSize: 8.3, margin: [0, 0, 0, 5] }, { text: `Otomatik değerlendirme: ${model.overallStatus} | Resmî çıktı statüsü: ${model.officialStatus}`, bold: true, fontSize: 8.2 }, summaryTable(model.records), ...(section.heading.includes("TESLİM") ? [{ text: model.documentText.copyDelivery, fontSize: 8 }] : [])];
+  if (section.type === "evaluation") return [{ text: model.documentText.testResult, fontSize: 8.3, margin: [0, 0, 0, 5] }, { text: `Test sonuçları hedef/ölçülen değerler, ortalama, kararlılık ve kabul kriterleriyle değerlendirildi. Durum: ${model.overallStatus}`, bold: true, fontSize: 8.2 }, summaryTable(model.records)];
+  if (section.type === "conclusion") return [{ text: model.documentText.reportConclusion, fontSize: 8.3, margin: [0, 0, 0, 5] }, { text: `Nihai sonuç: ${model.overallStatus}`, bold: true, fontSize: 9, color: model.overallStatus === "GEÇTİ" ? "19724f" : "9b1c1c" }];
   if (section.type === "grouped-records") return groupedContent(model, section);
-  return recordContent(selected(model, section.stepIds));
+  return recordContent(selected(model, section));
 }
 
 export function makePdfDefinition(model) {

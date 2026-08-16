@@ -16,20 +16,21 @@ export function reportTitle(service, plant, reportType) {
 
 const recordsFor = (records, predicate) => records.filter(predicate);
 const stepIds = (records) => records.map((record) => record.stepId);
+const recordKeys = (records) => records.map((record) => record.recordKey).filter(Boolean);
 
 function campaignGroups(records, campaign, prefix, predicate, withDirections = false) {
   return campaign.units.filter((unit) => unit.included !== false).map((unit, index) => {
-    const unitRecords = recordsFor(records, (record) => record.campaign?.unitId === unit.unitId && predicate(record));
+    const unitRecords = recordsFor(records, (record) => record.campaign?.campaignId === campaign.campaignId && record.campaign?.unitId === unit.unitId && record.campaign?.runId === campaign.runId && predicate(record));
     const number = `${prefix}.${index + 1}`;
     const heading = `${number} ${unit.unitId} — ${unit.unitName}`;
-    if (!withDirections) return { heading, stepIds: stepIds(unitRecords) };
+    if (!withDirections) return { heading, recordKeys: recordKeys(unitRecords) };
     const negative = unitRecords.find((record) => record.stepId.includes("NEG200"));
     const positive = unitRecords.find((record) => record.stepId.includes("POS200"));
     return {
       heading,
       items: [
-        { heading: `${number}.a Δf = -200 mHz`, stepIds: negative ? [negative.stepId] : [] },
-        { heading: `${number}.b Δf = +200 mHz`, stepIds: positive ? [positive.stepId] : [] }
+        { heading: `${number}.a Δf = -200 mHz`, recordKeys: negative ? recordKeys([negative]) : [] },
+        { heading: `${number}.b Δf = +200 mHz`, recordKeys: positive ? recordKeys([positive]) : [] }
       ]
     };
   });
@@ -65,14 +66,14 @@ function rgdhSections(records, plant) {
     { heading: "A) TEST KATILIMCI LİSTESİ", type: "participants" }, { heading: "B) TEKNİK VERİLER", type: "technical" },
     { heading: "C) AŞIRI İKAZ", type: "records", stepIds: stepIds(recordsFor(records, (record) => record.stepId.includes("OE"))) },
     { heading: "D) DÜŞÜK İKAZ", type: "records", stepIds: stepIds(recordsFor(records, (record) => record.stepId.includes("UE"))) },
-    { heading: "E) DEĞERLENDİRME", type: "summary" }, { heading: "F) SONUÇ", type: "summary" }, { heading: "HAM CSV SHA-256 KANIT MANİFESTİ", type: "evidence" }
+    { heading: "E) DEĞERLENDİRME", type: "evaluation" }, { heading: "F) SONUÇ", type: "conclusion" }, { heading: "HAM CSV SHA-256 KANIT MANİFESTİ", type: "evidence" }
   ];
   return [
     { heading: "A) TEST KATILIMCI LİSTESİ", type: "participants" }, { heading: "B) TEKNİK VERİLER", type: "technical" },
-    { heading: "C) MAKSİMUM ÇIKIŞ / AŞIRI İKAZ KAPASİTE TESTLERİ", type: "records", stepIds: stepIds(recordsFor(records, (record) => record.stepId.includes("OE_MAX"))) },
-    { heading: "D) ORTA ÇALIŞMA NOKTASI / %50 TESTLERİ", type: "records", stepIds: stepIds(recordsFor(records, (record) => record.stepId.includes("MID") || record.stepId.includes("P50"))) },
-    { heading: "E) DÜŞÜK ÇALIŞMA NOKTASI / %20 TESTLERİ", type: "records", stepIds: stepIds(recordsFor(records, (record) => record.stepId.includes("UE") || record.stepId.includes("P20"))) },
-    { heading: "F) GERİLİM KONTROLCÜSÜ PERFORMANS TESTLERİ", type: "records", stepIds: stepIds(recordsFor(records, (record) => record.kind === "voltage_control")) },
+    { heading: "C) MAKSİMUM ÇIKIŞ / AŞIRI İKAZ KAPASİTE TESTLERİ", type: "records", stepIds: stepIds(recordsFor(records, (record) => ["OE_MAX", "UE_MAX"].includes(record.stepId))) },
+    { heading: "D) ORTA ÇALIŞMA NOKTASI / %50 TESTLERİ", type: "records", stepIds: stepIds(recordsFor(records, (record) => ["OE_P50", "UE_P50"].includes(record.stepId))) },
+    { heading: "E) DÜŞÜK ÇALIŞMA NOKTASI / %20 TESTLERİ", type: "records", stepIds: stepIds(recordsFor(records, (record) => ["OE_P20", "UE_P20"].includes(record.stepId))) },
+    { heading: "F) GERİLİM KONTROLCÜSÜ PERFORMANS TESTLERİ", type: "records", stepIds: stepIds(recordsFor(records, (record) => ["VCTRL_PLUS1", "VCTRL_MINUS1"].includes(record.stepId) || record.kind === "voltage_control")) },
     { heading: "G) SONUÇ", type: "summary" }, { heading: "HAM CSV SHA-256 KANIT MANİFESTİ", type: "evidence" }
   ];
 }

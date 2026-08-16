@@ -54,6 +54,15 @@ test("loads PFK files, renders charts, criteria and reports without console erro
   await expect(page.locator("#reportPaper")).toContainText("HAM CSV SHA-256 KANIT MANİFESTİ");
   await expect(page.locator("#reportPaper")).toContainText("İNCELEME GEREKLİ");
   await expect(page.locator("#reportPaper")).not.toContainText("ORİJİNAL FORMAT / KAYNAK BELGE REFERANSI");
+  for (const reportType of ["Performans Test Raporu", "Test Tutanağı", "Test Sertifikası"]) {
+    await page.locator("#reportType").selectOption({ label: reportType });
+    const wordDownloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Word Raporu" }).click();
+    const wordDownload = await wordDownloadPromise;
+    expect(wordDownload.suggestedFilename()).toMatch(/\.docx$/i);
+    const wordBytes = await readFile(await wordDownload.path());
+    expect(String.fromCharCode(...wordBytes.slice(0, 2))).toBe("PK");
+  }
   expect(errors).toEqual([]);
 });
 

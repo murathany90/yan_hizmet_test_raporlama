@@ -1,5 +1,6 @@
 import { CONFIGS, DETAILED_CRITERIA, MENU } from "./app/config-v062.js";
 import { TEIAS_LOGO_URL } from "./app/assets.js";
+import { AVAILABLE_PLACEHOLDERS } from "./app/settings.js";
 import {
   APP_VERSION,
   configFor,
@@ -593,7 +594,7 @@ function renderCriteria() {
   }
 }
 
-function settingControl(label, value, type, onInput) {
+function settingControl(label, value, type, onInput, hint = "") {
   const group = element("div", { className: "field-group" });
   const fieldLabel = element("label", { text: label });
   const control = document.createElement(type === "textarea" ? "textarea" : "input");
@@ -611,11 +612,13 @@ function settingControl(label, value, type, onInput) {
   }
   fieldLabel.htmlFor = control.id || "";
   group.append(fieldLabel, control);
+  if (hint) group.append(element("small", { className: "source-note", text: hint }));
   return group;
 }
 
 function updateSettings(values) {
   patchDocumentSettings(state, values);
+  state.reportDirty = true;
   clearTimeout(settingsPreviewTimer);
   settingsPreviewTimer = setTimeout(() => {
     if (state.reportModel) previewReport(true);
@@ -642,21 +645,55 @@ function renderSettings() {
     settingControl("Belge hazırlayan birim", settings.preparedBy, "text", (value) => updateSettings({ preparedBy: value })),
     settingControl("Varsayılan imza rolleri (; ile ayırın)", settings.defaultSignatureRoles, "text", (value) => updateSettings({ defaultSignatureRoles: value })),
     settingControl("TEİAŞ amblemini göster", settings.showLogo, "checkbox", (value) => updateSettings({ showLogo: value })),
-    settingControl("TEİAŞ filigranını göster", settings.showWatermark, "checkbox", (value) => updateSettings({ showWatermark: value })),
+    settingControl("TEİAŞ filigranını göster (PDF ve Word arka planı)", settings.showWatermark, "checkbox", (value) => updateSettings({ showWatermark: value })),
     settingControl("Filigran şeffaflığı", settings.watermarkOpacity, "number", (value) => updateSettings({ watermarkOpacity: Number(value) }))
   ];
-  const textLabels = {
-    reportIntroduction: "Rapor giriş metni", technicalData: "Teknik veri açıklama metni", minutesIntroduction: "Tutanak başlangıç metni",
-    operationSafety: "İşletme güvenliği beyanı", testMethod: "Test yöntemi açıklaması", testResult: "Test sonucu açıklaması",
-    copyDelivery: "Nüsha / teslim açıklaması", certificateIntroduction: "Sertifika açıklama metni", certificateResult: "Sertifika sonuç metni", draftWarning: "Taslak / imza öncesi uyarısı"
-  };
-  const texts = Object.entries(textLabels).map(([key, label]) => settingControl(label, settings.texts[key], "textarea", (value) => updateSettings({ texts: { [key]: value } })));
-  const defaultsLabels = {
+  const placeholderHint = `Kullanılabilir placeholder'lar: ${AVAILABLE_PLACEHOLDERS.map((key) => `{{${key}}}`).join(" ")}`;
+  const scopedValue = (documentType, key) => settings.scopedTexts?.[state.service]?.[documentType]?.[key] ?? settings.texts[key] ?? "";
+  const scopedControl = (documentType, documentLabel, key, label) => settingControl(
+    `${state.service} > ${documentLabel} > ${label} — Kullanıldığı belge: ${state.service} ${documentLabel}`,
+    scopedValue(documentType, key), "textarea",
+    (value) => updateSettings({ scopedTexts: { [state.service]: { [documentType]: { [key]: value } } } }), placeholderHint
+  );
+  const reportTexts = [
+    scopedControl("report", "Performans Test Raporu", "reportIntroduction", "Giriş metni"),
+    scopedControl("report", "Performans Test Raporu", "technicalData", "Teknik veri açıklaması"),
+    scopedControl("report", "Performans Test Raporu", "testResult", "Test değerlendirme metni"),
+    scopedControl("report", "Performans Test Raporu", "reportConclusion", "Sonuç metni")
+  ];
+  const minutesTexts = [
+    scopedControl("minutes", "Test Tutanağı", "minutesIntroduction", "Tutanak başlangıç metni"),
+    scopedControl("minutes", "Test Tutanağı", "operationSafety", "İşletme güvenliği beyanı"),
+    scopedControl("minutes", "Test Tutanağı", "testMethod", "Test yöntemi açıklaması"),
+    scopedControl("minutes", "Test Tutanağı", "minutesResult", "Tutanak sonuç/beyan metni"),
+    scopedControl("minutes", "Test Tutanağı", "copyDelivery", "Nüsha/teslim metni"),
+    scopedControl("minutes", "Test Tutanağı", "attachmentsDescription", "Ekler açıklaması")
+  ];
+  const certificateTexts = [
+    scopedControl("certificate", "Test Sertifikası", "certificateIntroduction", "Sertifika açıklama metni"),
+    scopedControl("certificate", "Test Sertifikası", "certificateResult", "Sertifika sonuç metni"),
+    scopedControl("certificate", "Test Sertifikası", "certificateValidityText", "Sertifika geçerlilik metni"),
+    scopedControl("certificate", "Test Sertifikası", "draftWarning", "Taslak / imza öncesi uyarısı")
+  ];
+  const defaultLabels = {
     facilityName: "Tesis adı varsayılanı", operatorName: "Şirket / işletmeci varsayılanı", city: "Şehir varsayılanı",
-    turbineGenerator: "Türbin / jeneratör açıklaması", unitOperationMode: "Ünite işletme modu", equipmentDefaults: "Test ekipmanı varsayılanları"
+    turbineGenerator: "Türbin / jeneratör açıklaması", unitOperationMode: "Ünite işletme modu"
   };
-  const defaults = Object.entries(defaultsLabels).map(([key, label]) => settingControl(label, settings.defaults[key], "text", (value) => updateSettings({ defaults: { [key]: value } })));
-  elements.settingsContent.replaceChildren(section("A) Kurumsal belge ayarları", top), section("B) Standart metinler", texts), section("C) Tesis / ünite varsayılan bilgileri", defaults));
+  const defaults = Object.entries(defaultLabels).map(([key, label]) => settingControl(label, settings.defaults[key], "text", (value) => updateSettings({ defaults: { [key]: value } })));
+  const equipmentLabels = {
+    deviceType: "Cihaz türü", brand: "Marka", model: "Model", serialNo: "Seri no", software: "Yazılım",
+    accuracyClass: "Doğruluk sınıfı", calibrationNo: "Kalibrasyon no", calibrationDate: "Kalibrasyon tarihi"
+  };
+  const equipment = Object.entries(equipmentLabels).map(([key, label]) => settingControl(label, settings.defaults.equipment?.[key], "text", (value) => updateSettings({ defaults: { equipment: { [key]: value } } })));
+  const availableReports = configFor(state.service, state.plant).reports;
+  const cards = [
+    section("A) Kurumsal belge ayarları", top),
+    section(`B) Rapor Metinleri — ${state.service} > Performans Test Raporu`, reportTexts)
+  ];
+  if (availableReports.some((type) => type.includes("Tutanak"))) cards.push(section(`C) Tutanak Metinleri — ${state.service} > Test Tutanağı`, minutesTexts));
+  if (availableReports.some((type) => type.includes("Sertifika"))) cards.push(section(`D) Sertifika Metinleri — ${state.service} > Test Sertifikası`, certificateTexts));
+  cards.push(section("E) Tesis / ünite varsayılan bilgileri", defaults), section("F) Test ekipmanı varsayılanları", equipment));
+  elements.settingsContent.replaceChildren(...cards);
 }
 
 async function reportAssets() {
@@ -698,12 +735,21 @@ async function exportPfkCampaignCertificates() {
     const files = {};
     const manifestRows = ["UNIT_ID;UNIT_NAME;FILE_NAME;LOADED_STEP_COUNT"];
     for (const unit of campaign.units) {
-      const records = recordsForMode(state).filter((record) => record.sourceMetadata?.UNIT_ID === unit.unitId);
+      const records = recordsForMode(state).filter((record) => record.sourceMetadata?.CAMPAIGN_ID === campaign.campaignId && record.sourceMetadata?.UNIT_ID === unit.unitId && record.sourceMetadata?.RUN_ID === campaign.runId);
+      const unitMetadata = records.find((record) => record.sourceMetadata)?.sourceMetadata ?? {};
+      const pnomMw = unit.pnomMw || unitMetadata.UNIT_PNOM_MW || unitMetadata.PNOM_MW || getModeMetadata(state).PNOM_MW;
+      const rpmaxMw = unit.rpmaxMw || unitMetadata.UNIT_RPMAX_MW || unitMetadata.RPMAX_MW || getModeMetadata(state).RPMAX_MW;
       const model = buildReportModel({
         service: "PFK",
         plant: state.plant,
         config: configFor("PFK", state.plant),
-        metadata: { ...getModeMetadata(state), UNIT_ID: unit.unitId },
+        metadata: {
+          ...getModeMetadata(state), ...unitMetadata,
+          UNIT_ID: unit.unitId,
+          UNIT_NAME: unit.unitName || unitMetadata.UNIT_NAME || unit.unitId,
+          PNOM_MW: pnomMw,
+          RPMAX_MW: rpmaxMw
+        },
         reportType: "Test Sertifikası",
         reportNote: elements.reportNote.value,
         records,

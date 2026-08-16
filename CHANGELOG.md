@@ -2,6 +2,22 @@
 
 Bu proje [Semantic Versioning](https://semver.org/) yaklaşımını izler.
 
+## [0.6.3] - 2026-08-16
+
+### Düzeltildi
+
+- Word dışa aktarımı tarayıcı/Tauri WebView yolunda `Packer.toBlob()` ile çalışır; Node/Vitest için `Packer.toBuffer()` korunur.
+- PFK çok üniteli rapor bölümleri kayıtları `CAMPAIGN_ID + UNIT_ID + STEP_ID + RUN_ID` kimliğiyle seçer; üniteler birbirine karışmaz.
+- Birim sertifikaları üniteye ait ad, Pnom ve RPmax metadata’sını kullanır.
+- RGDH C.2 adımları C–F bölümlerine tam STEP_ID eşlemesiyle yönlenir; RGDH C.1 değerlendirme ve sonuç metinleri ayrıdır.
+
+### Değişti
+
+- Ayarlar; hizmet/belge türü bazlı rapor, tutanak ve sertifika metinleri, görünür breadcrumb’lar ve desteklenen placeholder’larla düzenlendi.
+- Sertifika geçerlilik metni önizleme, PDF ve DOCX’te ortak kullanılır; Word çıktısında gerçek VML arka plan filigranı bulunur.
+- Ekipman varsayılanları yapısal alanlara ayrıldı; kanal tablosu yalnız gerçek CSV kanallarından üretilir ve eksik alanları açıkça gösterir.
+- Birleşik PFK HASSASIYET CSV metadata’sı “Hassasiyet Testi — Birleşik Frekans Adımları” adını kullanır.
+
 ## [0.6.2] - 2026-08-16
 
 ### Eklendi

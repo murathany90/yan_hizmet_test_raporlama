@@ -72,13 +72,13 @@ function combineSensitivity(paths, destination, config, template) {
   const firstMetadata = metadataFromComments(first.comments);
   const targets = source.map(({ parsed }) => metadataFromComments(parsed.comments).STEP_ID).join(",");
   if (template) {
-    const metadata = { ...firstMetadata, STEP_ID: "HASSASIYET", SENSITIVITY_SEGMENTS: targets, YHDA_VERSION: version };
+    const metadata = { ...firstMetadata, STEP_ID: "HASSASIYET", STEP_NAME: "Hassasiyet Testi — Birleşik Frekans Adımları", SENSITIVITY_SEGMENTS: targets, YHDA_VERSION: version };
     writeFileSync(destination, makeCsvTemplate(metadata, config.steps.find((step) => step.id === "HASSASIYET").columns), "utf8");
   } else {
     const headers = first.headers;
     const timeIndex = headers.findIndex((header) => header.trim().toLowerCase() === "time_s");
     const remaining = headers.filter((_, index) => index !== timeIndex);
-    const metadata = { ...firstMetadata, STEP_ID: "HASSASIYET", SENSITIVITY_SEGMENTS: targets, DATA_CLASS: "ÖRNEK / SENTETİK", YHDA_VERSION: version };
+    const metadata = { ...firstMetadata, STEP_ID: "HASSASIYET", STEP_NAME: "Hassasiyet Testi — Birleşik Frekans Adımları", SENSITIVITY_SEGMENTS: targets, DATA_CLASS: "ÖRNEK / SENTETİK", YHDA_VERSION: version };
     const rows = source.flatMap(({ parsed }) => {
       const result = parsed.rows.map((values, index) => {
         const rest = values.filter((_, valueIndex) => valueIndex !== timeIndex);
@@ -184,7 +184,11 @@ for (const [key, config] of Object.entries(CONFIGS)) {
   for (const step of config.steps) {
     const path = resolve(templateRoot, service, plant, `${step.id}.csv`);
     const source = existsSync(path) ? parts(readFileSync(path, "utf8")) : { comments: [] };
-    const metadata = { ...metadataFromComments(source.comments), TEST_SERVICE: service, PLANT_TYPE: plant, STEP_ID: step.id, SAMPLE_PERIOD_MS: step.sampleMs, YHDA_VERSION: version };
+    const metadata = {
+      ...metadataFromComments(source.comments), TEST_SERVICE: service, PLANT_TYPE: plant, STEP_ID: step.id,
+      ...(service === "PFK" && step.id === "HASSASIYET" ? { STEP_NAME: "Hassasiyet Testi — Birleşik Frekans Adımları" } : {}),
+      SAMPLE_PERIOD_MS: step.sampleMs, YHDA_VERSION: version
+    };
     writeFileSync(path, makeCsvTemplate(metadata, step.columns), "utf8");
   }
 }
