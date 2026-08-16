@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
     "check:js": "node scripts/check-js-syntax.mjs",
+    "sync:csv-version": "node scripts/update-csv-version.mjs",
     "validate:csv": "node scripts/validate-all-csv.mjs",
     "test": "vitest run",
     "test:unit": "vitest run tests/unit",
