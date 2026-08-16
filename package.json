@@ -1,0 +1,37 @@
+{
+  "name": "teias-yhda",
+  "version": "0.6.0",
+  "private": true,
+  "description": "TEİAŞ Yan Hizmetler Doğrulama Aracı",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "check:js": "node scripts/check-js-syntax.mjs",
+    "validate:csv": "node scripts/validate-all-csv.mjs",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:reports": "vitest run tests/report",
+    "test:utf8": "vitest run tests/unit/utf8.test.js",
+    "test:ui": "playwright test",
+    "test:all": "npm run check:js && npm run validate:csv && npm run test && npm run build && npm run test:ui",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-dialog": "2.7.2",
+    "@tauri-apps/plugin-fs": "2.5.1",
+    "docx": "9.7.1",
+    "pdfmake": "0.2.23"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@tauri-apps/cli": "2.11.4",
+    "vite": "8.2.1",
+    "vitest": "4.1.10"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#063f68">
+    <title>TEİAŞ-YHDA v0.6.0</title>
+    <link rel="stylesheet" href="/src/styles/main.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#mainContent">Ana içeriğe geç</a>
+    <header class="app-header">
+      <button id="sideToggle" class="icon-button" type="button" aria-label="Menüyü aç veya kapat" title="Menüyü aç/kapat">☰</button>
+      <div class="brand-mark">
+        <img id="teiasLogo" alt="TEİAŞ amblemi">
+      </div>
+      <div class="brand-copy">
+        <div class="eyebrow">Türkiye Elektrik İletim A.Ş.</div>
+        <h1>Yan Hizmetler Doğrulama Aracı</h1>
+      </div>
+      <div class="header-actions">
+        <span id="runtimeBadge" class="runtime-badge">Web</span>
+        <span class="version-badge">v0.6.0</span>
+      </div>
+    </header>
+
+    <div class="app-shell">
+      <aside id="sidebar" class="sidebar" aria-label="Hizmet ve tesis seçimi"></aside>
+      <main id="mainContent" tabindex="-1">
+        <section class="workspace-header" aria-labelledby="workTitle">
+          <div>
+            <div id="crumb" class="breadcrumb"></div>
+            <h2 id="workTitle"></h2>
+          </div>
+          <div id="modeTag" class="mode-tag"></div>
+        </section>
+
+        <nav class="tabs" aria-label="Çalışma alanı sekmeleri">
+          <button class="tab-button active" type="button" data-tab="uploadPanel" aria-selected="true">1. Test CSV Yükle</button>
+          <button class="tab-button" type="button" data-tab="chartsPanel" aria-selected="false">2. Grafikler</button>
+          <button class="tab-button" type="button" data-tab="reportsPanel" aria-selected="false">3. Raporlar</button>
+          <button class="tab-button" type="button" data-tab="criteriaPanel" aria-selected="false">4. Kriterler</button>
+        </nav>
+
+        <section id="uploadPanel" class="tab-panel active">
+          <article class="card">
+            <div class="section-heading">
+              <div>
+                <span class="section-kicker">Rapor üst verisi</span>
+                <h3>Tesis ve Test Bilgileri</h3>
+              </div>
+              <span class="help-tip" title="CSV metadata alanları yüklendiğinde eşleşen değerler otomatik doldurulur.">?</span>
+            </div>
+            <div id="metaForm" class="form-grid"></div>
+          </article>
+
+          <article class="card">
+            <div class="section-heading responsive-heading">
+              <div>
+                <span class="section-kicker">Dosya yönetimi</span>
+                <h3>Test Adımları ve CSV Dosyaları</h3>
+                <p>Standart dosyalar UTF-8 BOM ve <strong>;</strong> ayırıcı kullanır. Ondalık değerler <strong>12.34</strong> veya <strong>12,34</strong> olabilir.</p>
+              </div>
+              <div class="upload-actions">
+                <label class="button primary" for="bulkFiles">Dosyaları Seç</label>
+                <input id="bulkFiles" class="visually-hidden" type="file" accept=".csv,text/csv" multiple>
+                <button id="nativeBulkOpen" class="button secondary" type="button" hidden>Yerel Dosyaları Aç</button>
+              </div>
+            </div>
+            <div id="bulkSummary" class="bulk-summary" aria-live="polite"></div>
+            <div id="stepList" class="step-grid"></div>
+          </article>
+        </section>
+
+        <section id="chartsPanel" class="tab-panel">
+          <article class="card chart-selector-card">
+            <div class="field-group">
+              <label for="graphStep">Grafiği gösterilecek test adımı</label>
+              <select id="graphStep"></select>
+            </div>
+            <div class="field-group">
+              <label for="graphInfo">Dosya / durum</label>
+              <input id="graphInfo" disabled>
+            </div>
+          </article>
+          <div id="chartArea" aria-live="polite"></div>
+        </section>
+
+        <section id="reportsPanel" class="tab-panel">
+          <article class="card report-controls no-print">
+            <div class="field-group">
+              <label for="reportType">Rapor türü</label>
+              <select id="reportType"></select>
+            </div>
+            <div class="field-group grow">
+              <label for="reportNote">Rapor notu</label>
+              <input id="reportNote" value="YHDA otomatik test değerlendirme çıktısı">
+            </div>
+            <div class="report-actions">
+              <button id="makeReport" class="button primary" type="button">Önizleme Oluştur</button>
+              <button id="pdfReport" class="button success" type="button">PDF Oluştur</button>
+              <button id="docxReport" class="button success" type="button">Word Raporu Oluştur</button>
+              <button id="printReport" class="button secondary" type="button">Yazdır</button>
+            </div>
+          </article>
+          <article id="reportPaper" class="report-paper" aria-live="polite">
+            <div class="empty-state">Rapor önizlemesi için en az bir CSV yükleyin ve “Önizleme Oluştur” düğmesini kullanın.</div>
+          </article>
+        </section>
+
+        <section id="criteriaPanel" class="tab-panel">
+          <div id="criteriaContent"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
+

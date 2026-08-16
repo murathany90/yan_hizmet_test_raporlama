@@ -1,0 +1,33 @@
+# Dependencies and frontend builds
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+
+# Rust / Tauri builds
+src-tauri/target/
+target/
+
+# Generated report and QA artifacts
+output/
+tmp/
+qa-artifacts/
+qa_artifacts/
+qa_tools/
+
+# Local configuration, credentials and editor state
+.env
+.env.*
+!.env.example
+*.local
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
