@@ -10,9 +10,11 @@ function run(program, args, cwd = root) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-if (process.platform === "win32") run(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm.cmd run build"]);
-else run("npm", ["run", "build"]);
-run("cargo", ["build", "--release"], resolve(root, "src-tauri"));
+// Tauri CLI, build modunda frontendDist'i ikiliye gömen gerekli ortam
+// değişkenlerini ayarlar. Cargo'yu doğrudan çağırmak devUrl'e (127.0.0.1)
+// düşen, taşınabilir olmayan bir uygulama üretebilir.
+if (process.platform === "win32") run(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm.cmd run tauri -- build --no-bundle"]);
+else run("npm", ["run", "tauri", "--", "build", "--no-bundle"]);
 
 const executable = resolve(root, "src-tauri", "target", "release", "teias-yhda.exe");
 if (!existsSync(executable)) throw new Error(`Taşınabilir uygulama bulunamadı: ${executable}`);

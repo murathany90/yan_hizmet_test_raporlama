@@ -11,7 +11,7 @@ TEİAŞ Yan Hizmetler Doğrulama Aracı; PFK, RGDH, HFK, SFHM ve SFK test kayıt
 - Ayarlar metinleri hizmet ve belge türü bağlamında düzenlenir; `{{TESIS_ADI}}`, `{{UNIT_NAME}}`, `{{PNOM_MW}}` dahil desteklenen placeholder’lar arayüzde görünür.
 - SHA-256 dosya bütünlüğünü doğrular; elektronik imza değildir.
 
-Taşınabilir Windows çıktısı için her güncellemeden sonra aşağıdaki komut kullanılabilir. Komut, Tauri release ikilisini `dist/TEIAS-YHDA_v<sürüm>_portable_<YYYYMMDD-HHMMSS>.exe` adına kopyalar.
+Taşınabilir Windows çıktısı için her güncellemeden sonra aşağıdaki komut kullanılabilir. Komut, Tauri release ikilisini `dist/TEIAS-YHDA_v<sürüm>_portable_<YYYYMMDD-HHMMSS>.exe` adına kopyalar; web varlıkları ayrı `dist/web` dizininde tutulur.
 
 ```powershell
 npm.cmd run release:portable

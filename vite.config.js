@@ -11,6 +11,8 @@ export default defineConfig({
     }
   },
   build: {
+    // Web assets and portable release binaries share dist without deleting each other.
+    outDir: "dist/web",
     target: "es2022",
     sourcemap: true,
     // PDF/DOCX generators are lazy chunks and intentionally include offline fonts.
