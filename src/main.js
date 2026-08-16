@@ -903,7 +903,12 @@ async function exportReport(kind) {
     showSavedToast(`${kind === "pdf" ? "PDF" : "Word"} raporu hazırlandı`, saved);
   } catch (error) {
     console.error(error);
-    showToast(`Rapor oluşturulamadı: ${error.message}`, "error");
+    const message = error instanceof Error && error.message
+      ? error.message
+      : typeof error === "string" && error.trim()
+        ? error
+        : "Bilinmeyen rapor oluşturma hatası";
+    showToast(`Rapor oluşturulamadı: ${message}`, "error");
   } finally {
     button.disabled = false;
     button.textContent = initialText;

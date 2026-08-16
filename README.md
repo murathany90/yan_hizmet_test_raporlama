@@ -1,8 +1,14 @@
-# TEİAŞ-YHDA v0.6.4
+# TEİAŞ-YHDA v0.6.5
 
 TEİAŞ Yan Hizmetler Doğrulama Aracı; PFK, RGDH, HFK, SFHM ve SFK test kayıtlarını yerel olarak doğrulayan, grafikleyen ve ortak bir rapor modelinden PDF/DOCX çıktısı üreten çevrimdışı odaklı bir web/Tauri uygulamasıdır.
 
 > HFK, SFHM ve resmî ayrıntılı formatı repository kaynaklarında bulunmayan EDÜ/EDT-SFK çıktıları yalnız **Teknik Ön Değerlendirme / Taslak** statüsündedir; resmî TEİAŞ raporu veya sertifikası yerine geçmez.
+
+## v0.6.5 — native PDF/Word kayıt izni ve doğru dosya türü
+
+- Tauri dosya sistemi yetkisi, kullanıcı seçimiyle alınan klasörlere PDF/DOCX/ZIP/CSV yazmayı destekler; PDF ve Word kaydı artık seçilen klasörde tamamlanır.
+- Yerel kaydetme penceresi PDF için `PDF belgesi (*.pdf)`, Word için `Word belgesi (*.docx)` türünü gösterir ve uzantıyı korur.
+- Yerel hata nesnesi metin veya nesne olarak dönse de uygulamada anlamlı hata mesajı gösterilir; `Rapor oluşturulamadı: undefined` gösterilmez.
 
 ## v0.6.4 — native kayıt, belge türü ve metin eşlemesi
 

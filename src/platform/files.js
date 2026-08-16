@@ -12,6 +12,43 @@ async function toBytes(data) {
   return new TextEncoder().encode(String(data));
 }
 
+const MIME_FILE_TYPES = {
+  "application/pdf": { extension: "pdf", label: "PDF belgesi" },
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": { extension: "docx", label: "Word belgesi" },
+  "application/zip": { extension: "zip", label: "ZIP arşivi" },
+  "text/csv": { extension: "csv", label: "CSV dosyası" },
+  "image/png": { extension: "png", label: "PNG görseli" },
+  "image/svg+xml": { extension: "svg", label: "SVG görseli" }
+};
+
+function fileTypeFor(filename, mimeType) {
+  const configured = MIME_FILE_TYPES[String(mimeType).split(";")[0]];
+  if (configured) return configured;
+  const extension = String(filename).split(".").at(-1)?.toLowerCase();
+  return {
+    extension: extension && extension !== filename ? extension : "bin",
+    label: "TEİAŞ-YHDA çıktısı"
+  };
+}
+
+function withExtension(filename, extension) {
+  const suffix = `.${extension}`;
+  return filename.toLowerCase().endsWith(suffix) ? filename : `${filename}${suffix}`;
+}
+
+function nativeErrorMessage(error) {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error.trim()) return error;
+  if (error && typeof error === "object" && typeof error.message === "string" && error.message.trim()) return error.message;
+  try {
+    const serialized = JSON.stringify(error);
+    if (serialized && serialized !== "{}") return serialized;
+  } catch {
+    // Tauri hata nesnesi serileştirilemiyorsa, aşağıdaki güvenli metni kullan.
+  }
+  return "Bilinmeyen yerel dosya sistemi hatası";
+}
+
 export async function chooseOutputDirectory() {
   if (!isTauriRuntime()) return "";
   const { open } = await import("@tauri-apps/plugin-dialog");
@@ -24,7 +61,9 @@ export async function chooseOutputDirectory() {
 }
 
 export async function saveBinary(data, defaultFilename, mimeType = "application/octet-stream", outputDirectory = "") {
-  const filename = safeFilename(defaultFilename, "TEIAS-YHDA-cikti");
+  const initialFilename = safeFilename(defaultFilename, "TEIAS-YHDA-cikti");
+  const fileType = fileTypeFor(initialFilename, mimeType);
+  const filename = withExtension(initialFilename, fileType.extension);
   if (isTauriRuntime()) {
     const [{ save }, { writeFile }, { join }] = await Promise.all([
       import("@tauri-apps/plugin-dialog"),
@@ -35,15 +74,19 @@ export async function saveBinary(data, defaultFilename, mimeType = "application/
     if (String(outputDirectory).trim()) {
       path = await join(String(outputDirectory).trim(), filename);
     } else {
-      const extension = filename.includes(".") ? filename.split(".").at(-1) : "bin";
       const selected = await save({
+        title: `${fileType.label} kaydet`,
         defaultPath: filename,
-        filters: [{ name: "TEİAŞ-YHDA çıktısı", extensions: [extension] }]
+        filters: [{ name: fileType.label, extensions: [fileType.extension] }]
       });
       if (!selected) throw new Error("Dosya kaydetme işlemi iptal edildi.");
-      path = selected;
+      path = withExtension(selected, fileType.extension);
     }
-    await writeFile(path, await toBytes(data));
+    try {
+      await writeFile(path, await toBytes(data));
+    } catch (error) {
+      throw new Error(`${fileType.label} kaydedilemedi: ${nativeErrorMessage(error)}`);
+    }
     return { native: true, path };
   }
 

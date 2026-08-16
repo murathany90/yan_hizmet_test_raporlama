@@ -2,6 +2,14 @@
 
 Bu proje [Semantic Versioning](https://semver.org/) yaklaşımını izler.
 
+## [0.6.5] - 2026-08-16
+
+### Düzeltildi
+
+- Tauri dosya sistemi yetkilerine kullanıcı seçimiyle belirlenen klasörlere dosya yazma izni eklendi. Portable uygulamada PDF, DOCX, ZIP ve CSV çıktıları seçilen klasöre yazılabilir.
+- Yerel kayıt iletişim kutusu PDF ve Word için doğru dosya türünü/uzantıyı gösterir; eksik uzantı otomatik tamamlanır.
+- Tauri'nin metin biçiminde ilettiği hatalar artık `undefined` yerine açıklayıcı bir kayıt hatası olarak gösterilir.
+
 ## [0.6.4] - 2026-08-16
 
 ### Düzeltildi
