@@ -1,3 +1,5 @@
+import { isMinutesReport } from "../app/settings.js";
+
 async function loadPdfMake() {
   const [pdfMakeModule, fontModule] = await Promise.all([import("pdfmake/build/pdfmake.js"), import("pdfmake/build/vfs_fonts.js")]);
   const pdfMake = pdfMakeModule.default ?? pdfMakeModule;
@@ -43,7 +45,7 @@ function campaignContent(summary) {
 }
 
 function minutesContent(model) {
-  return [model.documentText.minutesIntroduction, model.documentText.operationSafety, model.documentText.testMethod, model.documentText.minutesResult].map((text) => ({ text, fontSize: 8.5, lineHeight: 1.25, margin: [0, 0, 0, 7] })).concat([table(["Santral / ünite detayı", "Değer"], [["Türbin / jeneratör", model.metadata.TURBINE_GENERATOR_DESCRIPTION || "—"], ["Nominal güç", `${model.metadata.PNOM_MW || "—"} MW`], ["Frekans simülasyonu", model.metadata.SIGNAL_GENERATOR || "—"], ["İşletme modu", model.metadata.UNIT_OPERATION_MODE || model.metadata.PFK_OPERATION_MODE || "—"]], [145, "*"], 7.4)]);
+  return [model.documentText.minutesIntroduction, model.documentText.operationSafety, model.documentText.testMethod].map((text) => ({ text, fontSize: 8.5, lineHeight: 1.25, margin: [0, 0, 0, 7] })).concat([table(["Santral / ünite detayı", "Değer"], [["Türbin / jeneratör", model.metadata.TURBINE_GENERATOR_DESCRIPTION || "—"], ["Nominal güç", `${model.metadata.PNOM_MW || "—"} MW`], ["Frekans simülasyonu", model.metadata.SIGNAL_GENERATOR || "—"], ["İşletme modu", model.metadata.UNIT_OPERATION_MODE || model.metadata.PFK_OPERATION_MODE || "—"]], [145, "*"], 7.4)]);
 }
 
 function certificateContent(model) {
@@ -79,7 +81,10 @@ function sectionContent(section, model) {
   if (section.type === "minutes") return minutesContent(model);
   if (section.type === "campaign-summary") return campaignContent(model.campaignSummary);
   if (section.type === "evidence") return [{ text: "SHA-256 özeti elektronik imza değildir; ham CSV arşiv zinciri için izlenebilirlik sağlar.", fontSize: 7.5 }, { text: model.documentText.attachmentsDescription, fontSize: 7.5, margin: [0, 2, 0, 4] }, evidenceTable(model)];
-  if (section.type === "summary") return [{ text: model.documentText.testResult, fontSize: 8.3, margin: [0, 0, 0, 5] }, { text: `Otomatik değerlendirme: ${model.overallStatus} | Resmî çıktı statüsü: ${model.officialStatus}`, bold: true, fontSize: 8.2 }, summaryTable(model.records), ...(section.heading.includes("TESLİM") ? [{ text: model.documentText.copyDelivery, fontSize: 8 }] : [])];
+  if (section.type === "summary") {
+    const isMinutes = isMinutesReport(model.reportType);
+    return [{ text: isMinutes ? model.documentText.minutesResult : model.documentText.reportConclusion, fontSize: 8.3, margin: [0, 0, 0, 5] }, { text: `Otomatik değerlendirme: ${model.overallStatus} | Resmî çıktı statüsü: ${model.officialStatus}`, bold: true, fontSize: 8.2 }, summaryTable(model.records), ...(isMinutes && section.heading.includes("TESLİM") ? [{ text: model.documentText.copyDelivery, fontSize: 8 }] : [])];
+  }
   if (section.type === "evaluation") return [{ text: model.documentText.testResult, fontSize: 8.3, margin: [0, 0, 0, 5] }, { text: `Test sonuçları hedef/ölçülen değerler, ortalama, kararlılık ve kabul kriterleriyle değerlendirildi. Durum: ${model.overallStatus}`, bold: true, fontSize: 8.2 }, summaryTable(model.records)];
   if (section.type === "conclusion") return [{ text: model.documentText.reportConclusion, fontSize: 8.3, margin: [0, 0, 0, 5] }, { text: `Nihai sonuç: ${model.overallStatus}`, bold: true, fontSize: 9, color: model.overallStatus === "GEÇTİ" ? "19724f" : "9b1c1c" }];
   if (section.type === "grouped-records") return groupedContent(model, section);
@@ -92,15 +97,16 @@ export function makePdfDefinition(model) {
     watermark: model.watermark ? { text: model.watermark.text, color: "#005b9f", opacity: model.watermark.opacity, bold: true, fontSize: 54 } : undefined,
     footer: (page) => ({ text: `TEİAŞ-YHDA v${model.appVersion} | ${page}/2`, alignment: "center", color: "#637585", fontSize: 7, margin: [0, 8, 0, 0] }), content: certificateContent(model)
   };
+  const isMinutes = isMinutesReport(model.reportType);
   const content = [{ stack: [
     ...(model.assets.logoDataUrl ? [{ image: model.assets.logoDataUrl, fit: [76, 104], alignment: "center", margin: [0, 65, 0, 24] }] : []),
     { text: model.settings.institutionName || "TEİAŞ", bold: true, alignment: "center", fontSize: 12, color: "#244b64" },
     { text: model.metadata.TESIS_ADI || "TESİS ADI", bold: true, alignment: "center", fontSize: 20, color: "#063f68", margin: [0, 14, 0, 16] },
     { text: model.title, bold: true, alignment: "center", fontSize: 16, color: "#063f68", margin: [20, 0, 20, 25] },
     { text: `Rapor No: ${model.metadata.REPORT_NO || "—"}\nTest Tarihi: ${model.metadata.TEST_DATE || "—"}\nİl: ${model.metadata.CITY || "—"}`, alignment: "center", fontSize: 9.5, lineHeight: 1.4 },
-    { text: model.documentText.draftWarning || "İMZA ÖNCESİ / TASLAK", bold: true, alignment: "center", color: "#8a5700", margin: [0, 28, 0, 0], fontSize: 10 }
+    ...(model.draft ? [{ text: model.documentText.draftWarning || "İMZA ÖNCESİ / TASLAK", bold: true, alignment: "center", color: "#8a5700", margin: [0, 28, 0, 0], fontSize: 10 }] : [])
   ], pageBreak: "after" }];
-  content.push({ text: "İÇİNDEKİLER", style: "sectionHeading" }, { ol: model.sections.filter((section) => section.type !== "evidence").map((section) => section.heading), fontSize: 8.5, margin: [12, 4, 0, 12] }, { text: "YÜKLEME VE TAMLIK DURUMU", style: "sectionHeading" }, { text: model.missingSteps.length ? `Eksik test adımları: ${model.missingSteps.map((step) => step.stepId).join(", ")}` : `Beklenen ${model.expectedStepCount} test adımının tamamı yüklendi.`, color: model.missingSteps.length ? "#9b1c1c" : "#19724f", bold: true, fontSize: 8.5 }, { text: model.documentText.reportIntroduction, fontSize: 8.2, margin: [0, 4, 0, 5] }, { text: model.reportNote, fontSize: 8, margin: [0, 0, 0, 5] });
+  content.push({ text: "İÇİNDEKİLER", style: "sectionHeading" }, { ol: model.sections.filter((section) => section.type !== "evidence").map((section) => section.heading), fontSize: 8.5, margin: [12, 4, 0, 12] }, { text: "YÜKLEME VE TAMLIK DURUMU", style: "sectionHeading" }, { text: model.missingSteps.length ? `Eksik test adımları: ${model.missingSteps.map((step) => step.stepId).join(", ")}` : `Beklenen ${model.expectedStepCount} test adımının tamamı yüklendi.`, color: model.missingSteps.length ? "#9b1c1c" : "#19724f", bold: true, fontSize: 8.5 }, ...(isMinutes ? [] : [{ text: model.documentText.reportIntroduction, fontSize: 8.2, margin: [0, 4, 0, 5] }]), { text: model.reportNote, fontSize: 8, margin: [0, 0, 0, 5] });
   model.sections.forEach((section) => { content.push({ text: section.heading, style: "sectionHeading" }, ...sectionContent(section, model)); });
   content.push({ text: "İMZA ALANLARI", style: "sectionHeading" }, { columns: model.signatures.map((signature) => ({ width: "*", stack: [{ text: "\n\n________________________", alignment: "center" }, { text: signature.role, bold: true, alignment: "center", fontSize: 7.5 }, { text: signature.name, alignment: "center", fontSize: 7.5 }] })), columnGap: 10 });
   return { pageSize: "A4", pageMargins: [36, 48, 36, 42], defaultStyle: { font: "Roboto", fontSize: 9, color: "#172630" }, watermark: model.watermark ? { text: model.watermark.text, color: "#005b9f", opacity: model.watermark.opacity, bold: true, fontSize: 54 } : undefined, styles: { sectionHeading: { fontSize: 10, bold: true, color: "#244b64", fillColor: "#eaf2f7", margin: [0, 10, 0, 6] }, subHeading: { fontSize: 8.5, bold: true, color: "#244b64", margin: [0, 7, 0, 3] } }, footer: (currentPage, pageCount) => ({ text: `${model.settings.reportFooter || "TEİAŞ-YHDA"} | Sayfa ${currentPage}/${pageCount}`, alignment: "center", color: "#637585", fontSize: 7, margin: [0, 10, 0, 0] }), info: { title: model.title, author: "TEİAŞ-YHDA", subject: model.reportType }, content };

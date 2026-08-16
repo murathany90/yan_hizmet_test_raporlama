@@ -1,7 +1,7 @@
 import { CONFIGS } from "./config-v062.js";
 import { loadDocumentSettings, patchDocumentSettings as patchSettings, resetDocumentSettings as resetSettings } from "./settings.js";
 
-export const APP_VERSION = "0.6.3";
+export const APP_VERSION = "0.6.4";
 
 export function modeKey(service, plant) {
   return `${service}:${plant}`;
@@ -45,6 +45,8 @@ export function createAppState() {
     chartOpenState: new Map(),
     chartSeriesVisibility: new Map(),
     documentSettings: loadDocumentSettings(),
+    reportTypeByMode: new Map(),
+    settingsContext: { service: "PFK", documentType: "report" },
     reportModel: null,
     reportDirty: true
   };

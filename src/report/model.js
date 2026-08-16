@@ -159,7 +159,7 @@ export function buildReportModel({ service, plant, config, metadata, reportType,
   const text = Object.fromEntries(Object.entries(documentTextTemplates(documentSettings, service, reportType)).map(([key, template]) => [key, interpolateDocumentText(template, values)]));
   const roles = String(documentSettings.defaultSignatureRoles || "TEİAŞ Gözlemcisi; Tesis Yetkilisi; Testi Gerçekleştiren").split(";").map((role) => role.trim()).filter(Boolean);
   return Object.freeze({
-    schemaVersion: 4, appVersion: "0.6.3", createdAt: new Date().toISOString(), service, plant, configKey: `${service}:${plant}`,
+    schemaVersion: 4, appVersion: "0.6.4", createdAt: new Date().toISOString(), service, plant, configKey: `${service}:${plant}`,
     reportType, title: reportTitle(service, plant, reportType), draft, reportNote, metadata: effectiveMetadata,
     expectedStepCount: activeCampaign ? config.steps.length * activeCampaign.units.filter((unit) => unit.included !== false).length : expectedIds.length,
     loadedStepCount: reportRecords.length, missingSteps, overallStatus: evaluationStatus(reportRecords, missingSteps, draft), officialStatus: officialStatus(reportRecords, missingSteps, draft),

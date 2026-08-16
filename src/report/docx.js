@@ -1,5 +1,6 @@
 import { dataUrlToUint8Array } from "../utils/text.js";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
+import { isMinutesReport } from "../app/settings.js";
 
 const A4_WIDTH = 11906;
 const A4_HEIGHT = 16838;
@@ -58,8 +59,11 @@ export async function buildDocxDocument(model) {
   });
   const participants = () => [makeTable(["Alan", "Değer"], [["Test ekibi / katılımcılar", model.metadata.TEST_TEAM || "—"], ["Raporu hazırlayan", model.metadata.REPORT_PREPARED_BY || "—"]], [2200, TABLE_WIDTH - 2200], 14)];
   const campaign = () => model.campaignSummary ? [makeTable(["Ünite", "Pnom", "RPmax", "Yüklenen / beklenen", "Son P", "Beklenen P", "Durum"], model.campaignSummary.units.map((unit) => [`${unit.unitId} — ${unit.unitName}`, unit.pnomMw, unit.rpmaxMw, `${unit.loadedSteps} / ${unit.expectedSteps}`, Number.isFinite(unit.activePowerMw) ? unit.activePowerMw.toFixed(3) : "—", Number.isFinite(unit.expectedPowerMw) ? unit.expectedPowerMw.toFixed(3) : "—", unit.status]), [2050, 650, 650, 1100, 800, 900, TABLE_WIDTH - 6150], 11), paragraph(`Santral toplam P: ${model.campaignSummary.totalActivePowerMw.toFixed(3)} MW | Beklenen P: ${model.campaignSummary.expectedPowerMw.toFixed(3)} MW | Fark: ${model.campaignSummary.expectedPowerDifferenceMw.toFixed(3)} MW`, { size: 14 })] : [];
-  const minutes = () => [paragraph(model.documentText.minutesIntroduction, { size: 16 }), paragraph(model.documentText.operationSafety, { size: 16 }), paragraph(model.documentText.testMethod, { size: 16 }), paragraph(model.documentText.minutesResult, { size: 16 }), makeTable(["Santral / ünite detayı", "Değer"], [["Türbin / jeneratör", model.metadata.TURBINE_GENERATOR_DESCRIPTION || "—"], ["Nominal güç", `${model.metadata.PNOM_MW || "—"} MW`], ["Frekans simülasyonu", model.metadata.SIGNAL_GENERATOR || "—"], ["İşletme modu", model.metadata.UNIT_OPERATION_MODE || model.metadata.PFK_OPERATION_MODE || "—"]], [2200, TABLE_WIDTH - 2200], 14)];
-  const summary = (section) => [paragraph(model.documentText.testResult, { size: 16 }), paragraph(`Otomatik değerlendirme: ${model.overallStatus} | Resmî çıktı statüsü: ${model.officialStatus}`, { bold: true, size: 15 }), summaryTable(model.records), ...(section.heading.includes("TESLİM") ? [paragraph(model.documentText.copyDelivery, { size: 15 })] : [])];
+  const minutes = () => [paragraph(model.documentText.minutesIntroduction, { size: 16 }), paragraph(model.documentText.operationSafety, { size: 16 }), paragraph(model.documentText.testMethod, { size: 16 }), makeTable(["Santral / ünite detayı", "Değer"], [["Türbin / jeneratör", model.metadata.TURBINE_GENERATOR_DESCRIPTION || "—"], ["Nominal güç", `${model.metadata.PNOM_MW || "—"} MW`], ["Frekans simülasyonu", model.metadata.SIGNAL_GENERATOR || "—"], ["İşletme modu", model.metadata.UNIT_OPERATION_MODE || model.metadata.PFK_OPERATION_MODE || "—"]], [2200, TABLE_WIDTH - 2200], 14)];
+  const summary = (section) => {
+    const isMinutes = isMinutesReport(model.reportType);
+    return [paragraph(isMinutes ? model.documentText.minutesResult : model.documentText.reportConclusion, { size: 16 }), paragraph(`Otomatik değerlendirme: ${model.overallStatus} | Resmî çıktı statüsü: ${model.officialStatus}`, { bold: true, size: 15 }), summaryTable(model.records), ...(isMinutes && section.heading.includes("TESLİM") ? [paragraph(model.documentText.copyDelivery, { size: 15 })] : [])];
+  };
   const evaluation = () => [paragraph(model.documentText.testResult, { size: 16 }), paragraph(`Test sonuçları; hedef/ölçülen değerler, ortalama, kararlılık ve kabul kriterleri üzerinden değerlendirilmiştir. Otomatik değerlendirme: ${model.overallStatus}.`, { size: 15 }), summaryTable(model.records)];
   const conclusion = () => [paragraph(model.documentText.reportConclusion, { size: 16 }), paragraph(`Nihai sonuç: ${model.overallStatus}`, { bold: true, size: 17, color: model.overallStatus === "GEÇTİ" ? "19724F" : "9B1C1C" })];
   const sectionContent = (section) => {
@@ -101,11 +105,12 @@ export async function buildDocxDocument(model) {
     paragraph(model.metadata.TESIS_ADI || "TESİS ADI", { alignment: AlignmentType.CENTER, bold: true, size: 32, color: DARK, after: 220 }),
     paragraph(model.title, { alignment: AlignmentType.CENTER, bold: true, size: 28, color: DARK, after: 300 }),
     paragraph(`Rapor No: ${model.metadata.REPORT_NO || "—"}\nTest Tarihi: ${model.metadata.TEST_DATE || "—"}\nİl: ${model.metadata.CITY || "—"}`, { alignment: AlignmentType.CENTER, size: 18, line: 290, after: 240 }),
-    paragraph(model.documentText.draftWarning || "İMZA ÖNCESİ / TASLAK", { alignment: AlignmentType.CENTER, bold: true, size: 18, color: "8A5700" }), new Paragraph({ children: [new PageBreak()] })
+    ...(model.draft ? [paragraph(model.documentText.draftWarning || "İMZA ÖNCESİ / TASLAK", { alignment: AlignmentType.CENTER, bold: true, size: 18, color: "8A5700" })] : []), new Paragraph({ children: [new PageBreak()] })
   ];
+  const isMinutes = isMinutesReport(model.reportType);
   const children = model.reportType.includes("Sertifika") ? certificate() : [
     ...cover, heading("İÇİNDEKİLER"), new Paragraph({ children: model.sections.filter((section) => section.type !== "evidence").map((section) => new TextRun({ text: `${section.heading}\n`, size: 17, font: "Arial" })) }),
-    heading("YÜKLEME VE TAMLIK DURUMU"), paragraph(model.missingSteps.length ? `Eksik test adımları: ${model.missingSteps.map((step) => step.stepId).join(", ")}` : `Beklenen ${model.expectedStepCount} test adımının tamamı yüklendi.`, { bold: true, color: model.missingSteps.length ? "9B1C1C" : "19724F", size: 16 }), paragraph(model.documentText.reportIntroduction, { size: 16 }), paragraph(model.reportNote, { size: 15 }),
+    heading("YÜKLEME VE TAMLIK DURUMU"), paragraph(model.missingSteps.length ? `Eksik test adımları: ${model.missingSteps.map((step) => step.stepId).join(", ")}` : `Beklenen ${model.expectedStepCount} test adımının tamamı yüklendi.`, { bold: true, color: model.missingSteps.length ? "9B1C1C" : "19724F", size: 16 }), ...(isMinutes ? [] : [paragraph(model.documentText.reportIntroduction, { size: 16 })]), paragraph(model.reportNote, { size: 15 }),
     ...model.sections.flatMap((section) => [heading(section.heading), ...sectionContent(section)]),
     heading("İMZA ALANLARI"), new Table({ width: { size: TABLE_WIDTH, type: WidthType.DXA }, columnWidths: model.signatures.map(() => Math.floor(TABLE_WIDTH / model.signatures.length)), borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE }, insideHorizontal: { style: BorderStyle.NONE }, insideVertical: { style: BorderStyle.NONE } }, rows: [new TableRow({ children: model.signatures.map((signature) => cell(`\n\n________________________\n${signature.role}\n${signature.name}`, Math.floor(TABLE_WIDTH / model.signatures.length), { alignment: AlignmentType.CENTER, size: 14 })) })] })
   ];

@@ -1,7 +1,8 @@
 import { safeFilename } from "../utils/text.js";
+import { isTauri } from "@tauri-apps/api/core";
 
 export function isTauriRuntime() {
-  return typeof window !== "undefined" && Boolean(window.__TAURI_INTERNALS__);
+  return typeof window !== "undefined" && isTauri();
 }
 
 async function toBytes(data) {
@@ -11,21 +12,39 @@ async function toBytes(data) {
   return new TextEncoder().encode(String(data));
 }
 
-export async function saveBinary(data, defaultFilename, mimeType = "application/octet-stream") {
+export async function chooseOutputDirectory() {
+  if (!isTauriRuntime()) return "";
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const selected = await open({
+    directory: true,
+    multiple: false,
+    title: "TEİAŞ-YHDA çıktı klasörünü seçin"
+  });
+  return typeof selected === "string" ? selected : "";
+}
+
+export async function saveBinary(data, defaultFilename, mimeType = "application/octet-stream", outputDirectory = "") {
   const filename = safeFilename(defaultFilename, "TEIAS-YHDA-cikti");
   if (isTauriRuntime()) {
-    const [{ save }, { writeFile }] = await Promise.all([
+    const [{ save }, { writeFile }, { join }] = await Promise.all([
       import("@tauri-apps/plugin-dialog"),
-      import("@tauri-apps/plugin-fs")
+      import("@tauri-apps/plugin-fs"),
+      import("@tauri-apps/api/path")
     ]);
-    const extension = filename.includes(".") ? filename.split(".").at(-1) : "bin";
-    const path = await save({
-      defaultPath: filename,
-      filters: [{ name: "TEİAŞ-YHDA çıktısı", extensions: [extension] }]
-    });
-    if (!path) return false;
+    let path = "";
+    if (String(outputDirectory).trim()) {
+      path = await join(String(outputDirectory).trim(), filename);
+    } else {
+      const extension = filename.includes(".") ? filename.split(".").at(-1) : "bin";
+      const selected = await save({
+        defaultPath: filename,
+        filters: [{ name: "TEİAŞ-YHDA çıktısı", extensions: [extension] }]
+      });
+      if (!selected) throw new Error("Dosya kaydetme işlemi iptal edildi.");
+      path = selected;
+    }
     await writeFile(path, await toBytes(data));
-    return true;
+    return { native: true, path };
   }
 
   const blob = data instanceof Blob ? data : new Blob([await toBytes(data)], { type: mimeType });
@@ -38,7 +57,7 @@ export async function saveBinary(data, defaultFilename, mimeType = "application/
   anchor.click();
   anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 0);
-  return true;
+  return { native: false, path: "" };
 }
 
 export async function openCsvFilesNative() {
@@ -68,4 +87,3 @@ export async function askReplace(message) {
   }
   return window.confirm(message);
 }
-

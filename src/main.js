@@ -1,6 +1,6 @@
 import { CONFIGS, DETAILED_CRITERIA, MENU } from "./app/config-v062.js";
 import { TEIAS_LOGO_URL } from "./app/assets.js";
-import { AVAILABLE_PLACEHOLDERS } from "./app/settings.js";
+import { AVAILABLE_PLACEHOLDERS, isMinutesReport } from "./app/settings.js";
 import {
   APP_VERSION,
   configFor,
@@ -24,7 +24,7 @@ import { resolveCsvRoute } from "./csv/metadata.js";
 import { validateParsedCsv } from "./csv/validator.js";
 import { allTemplatesZip, pfkCampaignTemplatesZip } from "./csv/templates.js";
 import { rawCsvEvidence, rawEvidenceManifestCsv } from "./csv/evidence.js";
-import { askReplace, isTauriRuntime, openCsvFilesNative, saveBinary } from "./platform/files.js";
+import { askReplace, chooseOutputDirectory, isTauriRuntime, openCsvFilesNative, saveBinary } from "./platform/files.js";
 import { buildReportModel } from "./report/model.js";
 import { renderReportPreview } from "./report/preview.js";
 import { createPdfBlob } from "./report/pdf.js";
@@ -45,6 +45,7 @@ const elements = {};
 let logoDataUrlPromise;
 let booted = false;
 let settingsPreviewTimer;
+let reportPreviewRequest = 0;
 
 function byId(id) {
   return document.getElementById(id);
@@ -62,6 +63,10 @@ function showToast(message, kind = "info") {
   const toast = element("div", { className: `toast ${kind}`, text: message });
   elements.toastRegion.append(toast);
   setTimeout(() => toast.remove(), 5_000);
+}
+
+function showSavedToast(label, saved) {
+  showToast(saved?.native && saved.path ? `${label}: ${saved.path}` : `${label}.`, "success");
 }
 
 function plantLabel(service, plant) {
@@ -300,22 +305,35 @@ async function downloadTemplate(step, unit = null) {
     } : {})
   };
   const csv = makeCsvTemplate(metadata, step.columns);
-  await saveBinary(new Blob([csv], { type: "text/csv;charset=utf-8" }), `${state.service}_${state.plant}_${unit?.unitId ? `${unit.unitId}_` : ""}${step.id}.csv`, "text/csv;charset=utf-8");
+  try {
+    const saved = await saveBinary(new Blob([csv], { type: "text/csv;charset=utf-8" }), `${state.service}_${state.plant}_${unit?.unitId ? `${unit.unitId}_` : ""}${step.id}.csv`, "text/csv;charset=utf-8", state.documentSettings.outputDirectory);
+    showSavedToast("CSV şablonu hazırlandı", saved);
+  } catch (error) {
+    showToast(`CSV şablonu kaydedilemedi: ${error.message}`, "error");
+  }
 }
 
 async function downloadAllTemplates() {
   const config = configFor(state.service, state.plant);
   const zip = allTemplatesZip({ service: state.service, plant: state.plant, config, metadata: getModeMetadata(state) });
-  await saveBinary(zip, `${state.service}_${state.plant}_tum_test_sablonlari.zip`, "application/zip");
-  showToast(`${config.steps.length} test şablonu ZIP olarak hazırlandı.`, "success");
+  try {
+    const saved = await saveBinary(zip, `${state.service}_${state.plant}_tum_test_sablonlari.zip`, "application/zip", state.documentSettings.outputDirectory);
+    showSavedToast(`${config.steps.length} test şablonu ZIP olarak hazırlandı`, saved);
+  } catch (error) {
+    showToast(`ZIP kaydedilemedi: ${error.message}`, "error");
+  }
 }
 
 async function downloadPfkCampaignTemplates() {
   const campaign = getPfkCampaign(state);
   if (!campaign?.enabled) return;
   const zip = await pfkCampaignTemplatesZip({ plant: state.plant, config: configFor(state.service, state.plant), metadata: getModeMetadata(state), campaign });
-  await saveBinary(zip, `PFK_${state.plant}_${safeFilename(campaign.campaignId)}_kampanya_sablonlari.zip`, "application/zip");
-  showToast(`${campaign.units.length} üniteli PFK kampanya şablonları ZIP olarak hazırlandı.`, "success");
+  try {
+    const saved = await saveBinary(zip, `PFK_${state.plant}_${safeFilename(campaign.campaignId)}_kampanya_sablonlari.zip`, "application/zip", state.documentSettings.outputDirectory);
+    showSavedToast(`${campaign.units.length} üniteli PFK kampanya şablonları ZIP olarak hazırlandı`, saved);
+  } catch (error) {
+    showToast(`Kampanya ZIP'i kaydedilemedi: ${error.message}`, "error");
+  }
 }
 
 async function fileBytes(file) {
@@ -530,14 +548,17 @@ function renderCharts() {
 
 function renderReportTypes() {
   const types = configFor(state.service, state.plant).reports;
-  const previous = elements.reportType.value;
+  const currentMode = modeKey(state.service, state.plant);
+  const previous = state.reportTypeByMode.get(currentMode) ?? elements.reportType.value;
   elements.reportType.replaceChildren();
   for (const type of types) {
     const option = element("option", { text: type });
     option.value = type;
     elements.reportType.append(option);
   }
-  if (types.includes(previous)) elements.reportType.value = previous;
+  const selected = types.includes(previous) ? previous : (types.find((type) => type.includes("Rapor")) ?? types[0]);
+  elements.reportType.value = selected;
+  state.reportTypeByMode.set(currentMode, selected);
   elements.pfkCampaignCertificates.hidden = !(state.service === "PFK" && getPfkCampaign(state)?.enabled);
 }
 
@@ -616,6 +637,58 @@ function settingControl(label, value, type, onInput, hint = "") {
   return group;
 }
 
+function settingsSelect(label, value, options, onChange) {
+  const group = element("div", { className: "field-group" });
+  const fieldLabel = element("label", { text: label });
+  const control = document.createElement("select");
+  options.forEach(({ value: optionValue, label: optionLabel }) => {
+    const option = element("option", { text: optionLabel });
+    option.value = optionValue;
+    control.append(option);
+  });
+  control.value = value;
+  control.addEventListener("change", () => onChange(control.value));
+  group.append(fieldLabel, control);
+  return group;
+}
+
+function outputDirectoryControl(settings) {
+  const group = element("div", { className: "field-group output-directory-control" });
+  const label = element("label", { text: "Çıktı klasörü" });
+  const path = document.createElement("input");
+  path.type = "text";
+  path.readOnly = true;
+  path.value = settings.outputDirectory || "Seçilmedi — Tauri'de kaydederken dosya konumu sorulur.";
+  const actions = element("div", { className: "output-directory-actions" });
+  const choose = element("button", { className: "button secondary small", text: "Klasör Seç" });
+  choose.type = "button";
+  choose.addEventListener("click", async () => {
+    if (!isTauriRuntime()) {
+      showToast("Çıktı klasörü seçimi yalnız Tauri masaüstü uygulamasında kullanılabilir; web indirme davranışı değişmez.", "info");
+      return;
+    }
+    try {
+      const outputDirectory = await chooseOutputDirectory();
+      if (!outputDirectory) return;
+      updateSettings({ outputDirectory });
+      renderSettings();
+      showToast(`Çıktı klasörü seçildi: ${outputDirectory}`, "success");
+    } catch (error) {
+      showToast(`Çıktı klasörü seçilemedi: ${error.message}`, "error");
+    }
+  });
+  const clear = element("button", { className: "button ghost small", text: "Temizle" });
+  clear.type = "button";
+  clear.disabled = !settings.outputDirectory;
+  clear.addEventListener("click", () => {
+    updateSettings({ outputDirectory: "" });
+    renderSettings();
+  });
+  actions.append(choose, clear);
+  group.append(label, path, actions, element("small", { className: "source-note", text: "Tauri'de PDF, Word, ZIP ve kanıt manifesti seçilen klasöre kaydedilir; bildirimde gerçek dosya yolu gösterilir." }));
+  return group;
+}
+
 function updateSettings(values) {
   patchDocumentSettings(state, values);
   state.reportDirty = true;
@@ -628,10 +701,10 @@ function updateSettings(values) {
 function renderSettings() {
   if (!elements.settingsContent) return;
   const settings = state.documentSettings;
-  const section = (title, controls) => {
+  const section = (title, controls, className = "") => {
     const card = element("article", { className: "card settings-card" });
     card.append(element("h3", { text: title }));
-    const form = element("div", { className: "form-grid settings-grid" });
+    const form = element("div", { className: `form-grid settings-grid ${className}`.trim() });
     form.append(...controls);
     card.append(form);
     return card;
@@ -646,35 +719,50 @@ function renderSettings() {
     settingControl("Varsayılan imza rolleri (; ile ayırın)", settings.defaultSignatureRoles, "text", (value) => updateSettings({ defaultSignatureRoles: value })),
     settingControl("TEİAŞ amblemini göster", settings.showLogo, "checkbox", (value) => updateSettings({ showLogo: value })),
     settingControl("TEİAŞ filigranını göster (PDF ve Word arka planı)", settings.showWatermark, "checkbox", (value) => updateSettings({ showWatermark: value })),
-    settingControl("Filigran şeffaflığı", settings.watermarkOpacity, "number", (value) => updateSettings({ watermarkOpacity: Number(value) }))
+    settingControl("Filigran şeffaflığı", settings.watermarkOpacity, "number", (value) => updateSettings({ watermarkOpacity: Number(value) })),
+    outputDirectoryControl(settings)
   ];
-  const placeholderHint = `Kullanılabilir placeholder'lar: ${AVAILABLE_PLACEHOLDERS.map((key) => `{{${key}}}`).join(" ")}`;
-  const scopedValue = (documentType, key) => settings.scopedTexts?.[state.service]?.[documentType]?.[key] ?? settings.texts[key] ?? "";
-  const scopedControl = (documentType, documentLabel, key, label) => settingControl(
-    `${state.service} > ${documentLabel} > ${label} — Kullanıldığı belge: ${state.service} ${documentLabel}`,
-    scopedValue(documentType, key), "textarea",
-    (value) => updateSettings({ scopedTexts: { [state.service]: { [documentType]: { [key]: value } } } }), placeholderHint
-  );
-  const reportTexts = [
-    scopedControl("report", "Performans Test Raporu", "reportIntroduction", "Giriş metni"),
-    scopedControl("report", "Performans Test Raporu", "technicalData", "Teknik veri açıklaması"),
-    scopedControl("report", "Performans Test Raporu", "testResult", "Test değerlendirme metni"),
-    scopedControl("report", "Performans Test Raporu", "reportConclusion", "Sonuç metni")
-  ];
-  const minutesTexts = [
-    scopedControl("minutes", "Test Tutanağı", "minutesIntroduction", "Tutanak başlangıç metni"),
-    scopedControl("minutes", "Test Tutanağı", "operationSafety", "İşletme güvenliği beyanı"),
-    scopedControl("minutes", "Test Tutanağı", "testMethod", "Test yöntemi açıklaması"),
-    scopedControl("minutes", "Test Tutanağı", "minutesResult", "Tutanak sonuç/beyan metni"),
-    scopedControl("minutes", "Test Tutanağı", "copyDelivery", "Nüsha/teslim metni"),
-    scopedControl("minutes", "Test Tutanağı", "attachmentsDescription", "Ekler açıklaması")
-  ];
-  const certificateTexts = [
-    scopedControl("certificate", "Test Sertifikası", "certificateIntroduction", "Sertifika açıklama metni"),
-    scopedControl("certificate", "Test Sertifikası", "certificateResult", "Sertifika sonuç metni"),
-    scopedControl("certificate", "Test Sertifikası", "certificateValidityText", "Sertifika geçerlilik metni"),
-    scopedControl("certificate", "Test Sertifikası", "draftWarning", "Taslak / imza öncesi uyarısı")
-  ];
+  const context = state.settingsContext;
+  const serviceOptions = MENU.map((item) => ({ value: item.service, label: `${item.service} — ${SERVICE_NAMES[item.service] ?? item.label}` }));
+  const supportedDocumentTypes = (service) => {
+    const reports = MENU.find((item) => item.service === service)?.plants.flatMap(([plant]) => configFor(service, plant).reports) ?? [];
+    return [
+      { value: "report", label: "Rapor" },
+      ...(reports.some((type) => isMinutesReport(type)) ? [{ value: "minutes", label: "Tutanak" }] : []),
+      ...(reports.some((type) => type.includes("Sertifika")) ? [{ value: "certificate", label: "Sertifika" }] : [])
+    ];
+  };
+  const documentOptions = supportedDocumentTypes(context.service);
+  if (!documentOptions.some((item) => item.value === context.documentType)) context.documentType = "report";
+  const textGroups = {
+    report: { label: "Performans Test Raporu", fields: [["reportIntroduction", "Rapor giriş metni"], ["technicalData", "Teknik veri açıklaması"], ["testResult", "Test değerlendirme metni"], ["reportConclusion", "Sonuç metni"]] },
+    minutes: { label: "Test Tutanağı", fields: [["minutesIntroduction", "Tutanak başlangıç metni"], ["operationSafety", "İşletme güvenliği beyanı"], ["testMethod", "Test yöntemi açıklaması"], ["minutesResult", "Tutanak sonuç/beyan metni"], ["copyDelivery", "Nüsha/teslim metni"], ["attachmentsDescription", "Ekler açıklaması"]] },
+    certificate: { label: "Test Sertifikası", fields: [["certificateIntroduction", "Sertifika açıklama metni"], ["certificateResult", "Sertifika sonuç metni"], ["certificateValidityText", "Sertifika geçerlilik metni"], ["draftWarning", "Taslak / imza öncesi uyarısı"]] }
+  };
+  const textGroup = textGroups[context.documentType];
+  const scopedValue = (key) => settings.scopedTexts?.[context.service]?.[context.documentType]?.[key] ?? settings.texts[key] ?? "";
+  const textControls = textGroup.fields.map(([key, label]) => settingControl(
+    `${context.service} > ${textGroup.label} > ${label}`,
+    scopedValue(key), "textarea",
+    (value) => updateSettings({ scopedTexts: { [context.service]: { [context.documentType]: { [key]: value } } } }),
+    `Kullanıldığı belge: ${context.service} ${textGroup.label}`
+  ));
+  const placeholderDetails = document.createElement("details");
+  placeholderDetails.className = "settings-placeholders";
+  placeholderDetails.append(element("summary", { text: "Kullanılabilir değişkenler" }), element("p", { text: AVAILABLE_PLACEHOLDERS.map((key) => `{{${key}}}`).join(" · ") }));
+  const textCard = section(`B) Belge metinleri — ${context.service} > ${textGroup.label}`, [
+    settingsSelect("Hizmet", context.service, serviceOptions, (service) => {
+      state.settingsContext = { service, documentType: "report" };
+      renderSettings();
+    }),
+    settingsSelect("Belge", context.documentType, documentOptions, (documentType) => {
+      state.settingsContext = { ...state.settingsContext, documentType };
+      renderSettings();
+    }),
+    element("div", { className: "settings-breadcrumb", text: `${context.service} > ${textGroup.label}` }),
+    placeholderDetails,
+    ...textControls
+  ], "settings-document-grid");
   const defaultLabels = {
     facilityName: "Tesis adı varsayılanı", operatorName: "Şirket / işletmeci varsayılanı", city: "Şehir varsayılanı",
     turbineGenerator: "Türbin / jeneratör açıklaması", unitOperationMode: "Ünite işletme modu"
@@ -685,15 +773,12 @@ function renderSettings() {
     accuracyClass: "Doğruluk sınıfı", calibrationNo: "Kalibrasyon no", calibrationDate: "Kalibrasyon tarihi"
   };
   const equipment = Object.entries(equipmentLabels).map(([key, label]) => settingControl(label, settings.defaults.equipment?.[key], "text", (value) => updateSettings({ defaults: { equipment: { [key]: value } } })));
-  const availableReports = configFor(state.service, state.plant).reports;
-  const cards = [
-    section("A) Kurumsal belge ayarları", top),
-    section(`B) Rapor Metinleri — ${state.service} > Performans Test Raporu`, reportTexts)
-  ];
-  if (availableReports.some((type) => type.includes("Tutanak"))) cards.push(section(`C) Tutanak Metinleri — ${state.service} > Test Tutanağı`, minutesTexts));
-  if (availableReports.some((type) => type.includes("Sertifika"))) cards.push(section(`D) Sertifika Metinleri — ${state.service} > Test Sertifikası`, certificateTexts));
-  cards.push(section("E) Tesis / ünite varsayılan bilgileri", defaults), section("F) Test ekipmanı varsayılanları", equipment));
-  elements.settingsContent.replaceChildren(...cards);
+  elements.settingsContent.replaceChildren(
+    section("A) Kurumsal belge ve çıktı ayarları", top),
+    textCard,
+    section("C) Tesis / ünite varsayılan bilgileri", defaults),
+    section("D) Test ekipmanı varsayılanları", equipment)
+  );
 }
 
 async function reportAssets() {
@@ -763,8 +848,8 @@ async function exportPfkCampaignCertificates() {
       manifestRows.push(`${unit.unitId};${unit.unitName};${filename};${records.length}`);
     }
     files["sertifika_manifest.csv"] = new TextEncoder().encode(`\uFEFF${manifestRows.join("\r\n")}\r\n`);
-    await saveBinary(zipSync(files, { level: 6 }), `PFK_${safeFilename(campaign.campaignId)}_unit_sertifikalari.zip`, "application/zip");
-    showToast("Ünite sertifikaları ZIP olarak hazırlandı.", "success");
+    const saved = await saveBinary(zipSync(files, { level: 6 }), `PFK_${safeFilename(campaign.campaignId)}_unit_sertifikalari.zip`, "application/zip", state.documentSettings.outputDirectory);
+    showSavedToast("Ünite sertifikaları ZIP olarak hazırlandı", saved);
   } catch (error) {
     showToast(`Sertifika ZIP'i oluşturulamadı: ${error.message}`, "error");
   } finally {
@@ -778,8 +863,8 @@ async function exportRawEvidenceManifest() {
     const records = recordsForMode(state);
     if (!records.length) throw new Error("Kanıt manifesti için en az bir CSV yükleyin.");
     const csv = rawEvidenceManifestCsv(records.map((record) => record.evidence).filter(Boolean));
-    await saveBinary(new Blob([csv], { type: "text/csv;charset=utf-8" }), `${state.service}_${state.plant}_ham_csv_kanit_manifesti.csv`, "text/csv;charset=utf-8");
-    showToast("Ham CSV SHA-256 kanıt manifesti indirildi.", "success");
+    const saved = await saveBinary(new Blob([csv], { type: "text/csv;charset=utf-8" }), `${state.service}_${state.plant}_ham_csv_kanit_manifesti.csv`, "text/csv;charset=utf-8", state.documentSettings.outputDirectory);
+    showSavedToast("Ham CSV SHA-256 kanıt manifesti hazırlandı", saved);
   } catch (error) {
     showToast(error.message, "error");
   }
@@ -790,11 +875,16 @@ async function currentReport() {
 }
 
 async function previewReport(quiet = false) {
+  const request = ++reportPreviewRequest;
   try {
     const model = await buildCurrentReport();
+    if (request !== reportPreviewRequest) return;
     elements.reportPaper.innerHTML = renderReportPreview(model);
     if (!quiet) showToast("Rapor önizlemesi oluşturuldu.", "success");
   } catch (error) {
+    if (request !== reportPreviewRequest) return;
+    state.reportModel = null;
+    elements.reportPaper.replaceChildren(element("div", { className: "empty-state", text: `Önizleme oluşturulamadı: ${error.message}` }));
     showToast(error.message, "error");
   }
 }
@@ -807,9 +897,10 @@ async function exportReport(kind) {
   try {
     const model = await currentReport();
     const base = safeFilename(`${model.service}-${model.plant}-${model.metadata.TESIS_ADI || "rapor"}`);
-    if (kind === "pdf") await saveBinary(await createPdfBlob(model), `${base}.pdf`, "application/pdf");
-    else await saveBinary(await createDocxBlob(model), `${base}.docx`, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-    showToast(`${kind === "pdf" ? "PDF" : "Word"} raporu hazırlandı.`, "success");
+    const saved = kind === "pdf"
+      ? await saveBinary(await createPdfBlob(model), `${base}.pdf`, "application/pdf", state.documentSettings.outputDirectory)
+      : await saveBinary(await createDocxBlob(model), `${base}.docx`, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", state.documentSettings.outputDirectory);
+    showSavedToast(`${kind === "pdf" ? "PDF" : "Word"} raporu hazırlandı`, saved);
   } catch (error) {
     console.error(error);
     showToast(`Rapor oluşturulamadı: ${error.message}`, "error");
@@ -869,7 +960,17 @@ function bindEvents() {
     setActiveTab("reportsPanel");
     window.print();
   });
-  elements.reportType.addEventListener("change", () => { state.reportDirty = true; });
+  elements.reportType.addEventListener("change", async () => {
+    state.reportTypeByMode.set(modeKey(state.service, state.plant), elements.reportType.value);
+    state.reportDirty = true;
+    state.reportModel = null;
+    reportPreviewRequest += 1;
+    if (recordsForMode(state).length) {
+      await previewReport(true);
+    } else {
+      elements.reportPaper.replaceChildren(element("div", { className: "empty-state", text: "Seçili belge türü için önizleme oluşturmak üzere en az bir CSV yükleyin." }));
+    }
+  });
   elements.reportNote.addEventListener("input", () => { state.reportDirty = true; });
   elements.resetSettings.addEventListener("click", () => {
     resetDocumentSettings(state);

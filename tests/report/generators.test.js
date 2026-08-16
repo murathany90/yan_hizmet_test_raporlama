@@ -109,6 +109,38 @@ describe("report generators", () => {
     expect(documentXml).toContain("U2 için yalnız bu geçerlilik metni");
   }, 30_000);
 
+  it("keeps report and minutes text in their own sections across preview, PDF and DOCX", async () => {
+    const config = CONFIGS["PFK:HES"];
+    const step = config.steps[0];
+    const settings = {
+      ...DEFAULT_DOCUMENT_SETTINGS,
+      scopedTexts: {
+        PFK: {
+          report: { reportIntroduction: "SADECE RAPOR GİRİŞİ", technicalData: "RAPOR TEKNİK METNİ", reportConclusion: "RAPOR NİHAİ SONUCU", testResult: "RAPOR DEĞERLENDİRMESİ" },
+          minutes: { minutesIntroduction: "SADECE TUTANAK BAŞLANGICI", operationSafety: "TUTANAK GÜVENLİĞİ", testMethod: "TUTANAK YÖNTEMİ", minutesResult: "TUTANAK SONUCU", copyDelivery: "TUTANAK TESLİMİ", attachmentsDescription: "TUTANAK EKLERİ" }
+        }
+      }
+    };
+    const record = { name: "örnek.csv", step, rows: [], analysis: { status: "GEÇTİ", detail: "ok", metrics: {} }, validation: { warnings: [] } };
+    const report = buildReportModel({ service: "PFK", plant: "HES", config, metadata: {}, reportType: "Performans Test Raporu", reportNote: "", settings, records: [record], chartProvider: () => [] });
+    const minutes = buildReportModel({ service: "PFK", plant: "HES", config, metadata: {}, reportType: "Test Tutanağı", reportNote: "", settings, records: [record], chartProvider: () => [] });
+    const reportPreview = renderReportPreview(report);
+    const minutesPreview = renderReportPreview(minutes);
+    expect(reportPreview).toContain("SADECE RAPOR GİRİŞİ");
+    expect(reportPreview).toContain("RAPOR NİHAİ SONUCU");
+    expect(reportPreview).not.toContain("SADECE TUTANAK BAŞLANGICI");
+    expect(minutesPreview).toContain("SADECE TUTANAK BAŞLANGICI");
+    expect(minutesPreview).toContain("TUTANAK SONUCU");
+    expect(minutesPreview).not.toContain("SADECE RAPOR GİRİŞİ");
+    const minutesPdf = JSON.stringify(makePdfDefinition(minutes));
+    expect(minutesPdf).toContain("TUTANAK SONUCU");
+    expect(minutesPdf).not.toContain("SADECE RAPOR GİRİŞİ");
+    const docx = await createDocxBuffer(minutes);
+    const documentXml = strFromU8(unzipSync(docx)["word/document.xml"]);
+    expect(documentXml).toContain("TUTANAK SONUCU");
+    expect(documentXml).not.toContain("SADECE RAPOR GİRİŞİ");
+  }, 30_000);
+
   it("creates a real PDF binary", async () => {
     const buffer = await createPdfBuffer(fixtureModel());
     const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);

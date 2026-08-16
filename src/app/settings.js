@@ -7,6 +7,7 @@ export const DEFAULT_DOCUMENT_SETTINGS = Object.freeze({
   city: "",
   regulationReference: "Elektrik Şebeke Yönetmeliği Ek-17",
   preparedBy: "",
+  outputDirectory: "",
   defaultSignatureRoles: "TEİAŞ Gözlemcisi; Tesis Yetkilisi; Testi Gerçekleştiren",
   showLogo: true,
   showWatermark: true,
@@ -91,8 +92,12 @@ export function interpolateDocumentText(template, values) {
   return String(template ?? "").replace(/\{\{([A-Z0-9_]+)\}\}/g, (_, key) => String(values[key] ?? "—"));
 }
 
+export function isMinutesReport(reportType = "") {
+  return String(reportType).toLocaleLowerCase("tr-TR").includes("tutan");
+}
+
 export function documentTypeForReport(reportType = "") {
-  if (reportType.includes("Tutanak")) return "minutes";
+  if (isMinutesReport(reportType)) return "minutes";
   if (reportType.includes("Sertifika")) return "certificate";
   return "report";
 }

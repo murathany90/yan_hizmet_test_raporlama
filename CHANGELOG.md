@@ -2,6 +2,18 @@
 
 Bu proje [Semantic Versioning](https://semver.org/) yaklaşımını izler.
 
+## [0.6.4] - 2026-08-16
+
+### Düzeltildi
+
+- Tauri çalışma ortamı resmî API ile algılanır; native PDF, DOCX, ZIP ve kanıt manifesti seçilen çıktı klasörüne yazılır ve başarısız native kayıt tarayıcı indirmesine sessizce düşmez.
+- Rapor türü değişimi yeni model ve önizlemeyi anında üretir. “Test Tutanağı” gibi Türkçe ekli tür adları doğru belge akışına yönlenir.
+- Rapor giriş/değerlendirme/sonuç, tutanak başlangıç/güvenlik/yöntem/sonuç/teslim/ekler ve sertifika metinleri yalnız kendi belge bölümlerinde görünür; HTML, PDF ve DOCX aynı eşlemeyi kullanır.
+
+### Değişti
+
+- Ayarlar ekranı hizmet + belge seçicisi, tek değişken rehberi ve sade belge-metni kartıyla düzenlendi; çıktı klasörü kurumsal ayarlara eklendi.
+
 ## [0.6.3] - 2026-08-16
 
 ### Düzeltildi

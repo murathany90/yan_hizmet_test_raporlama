@@ -54,6 +54,9 @@ test("loads PFK files, renders charts, criteria and reports without console erro
   await expect(page.locator("#reportPaper")).toContainText("HAM CSV SHA-256 KANIT MANİFESTİ");
   await expect(page.locator("#reportPaper")).toContainText("İNCELEME GEREKLİ");
   await expect(page.locator("#reportPaper")).not.toContainText("ORİJİNAL FORMAT / KAYNAK BELGE REFERANSI");
+  await page.locator("#reportType").selectOption({ label: "Test Tutanağı" });
+  await expect(page.locator("#reportPaper")).toContainText("PRİMER FREKANS KONTROL PERFORMANS TESTLERİ TUTANAĞI");
+  await expect(page.locator("#reportPaper")).toContainText("SONUÇ VE NÜSHA TESLİMİ");
   for (const reportType of ["Performans Test Raporu", "Test Tutanağı", "Test Sertifikası"]) {
     await page.locator("#reportType").selectOption({ label: reportType });
     const wordDownloadPromise = page.waitForEvent("download");
@@ -110,11 +113,13 @@ test("treats CSV metadata as text and keeps mobile navigation usable", async ({ 
   expect(await page.locator("#reportPaper img[data-xss]").count()).toBe(0);
   expect(await page.evaluate(() => window.__XSS)).not.toBe(true);
 
+  await page.locator("#reportType").selectOption({ label: "Test Tutanağı" });
+  await expect(page.locator("#reportPaper")).toContainText("TEST TUTANAĞI");
   await page.getByRole("button", { name: "5. Ayarlar" }).click();
-  await page.locator("#settingsContent textarea").first().fill("Özel kapsam: {{TESIS_ADI}}");
+  await page.locator("#settingsContent select").nth(1).selectOption("minutes");
+  await page.locator("#settingsContent textarea").first().fill("Özel tutanak kapsamı: {{TESIS_ADI}}");
   await page.getByRole("button", { name: "3. Raporlar" }).click();
-  await page.getByRole("button", { name: "Önizleme Oluştur" }).click();
-  await expect(page.locator("#reportPaper")).toContainText("Özel kapsam:");
+  await expect(page.locator("#reportPaper")).toContainText("Özel tutanak kapsamı:");
 
   await page.setViewportSize({ width: 600, height: 900 });
   await page.locator("#sideToggle").click();
