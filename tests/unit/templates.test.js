@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { unzipSync } from "fflate";
-import { CONFIGS } from "../../src/app/config.js";
+import { CONFIGS } from "../../src/app/config-v062.js";
 import { allTemplatesZip, pfkCampaignTemplatesZip } from "../../src/csv/templates.js";
 import { hasUtf8Bom, parseCsv } from "../../src/csv/parser.js";
 

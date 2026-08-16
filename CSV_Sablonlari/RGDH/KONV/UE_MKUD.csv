@@ -1,4 +1,4 @@
-﻿# YHDA_VERSION=0.6.1
+﻿# YHDA_VERSION=0.6.2
 # TEST_SERVICE=RGDH
 # PLANT_TYPE=KONV
 # STEP_ID=UE_MKUD
@@ -32,5 +32,5 @@
 # VNOM_GEN_KV=15.75
 # TRAFO_TAP_TYPE=Yükte kademe değiştirici
 # Q_TEST_DURATION_MIN=10
-time_s;bus_voltage_kv;internal_aux_voltage_v;active_power_mw;reactive_power_mvar;terminal_voltage_kv;excitation_current_a;stator_current_a;power_factor
-0;380,000;;;;380,000;;;
+ZAMAN;SIRA_NO;bus_voltage_kv;internal_aux_voltage_v;active_power_mw;reactive_power_mvar;terminal_voltage_kv;excitation_current_a;stator_current_a;power_factor
+16.8.2026 00:00:00,0s;1;;;;;;;;

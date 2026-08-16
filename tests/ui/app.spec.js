@@ -12,18 +12,26 @@ test("loads PFK files, renders charts, criteria and reports without console erro
 
   const fixtures = [
     "RES_MAX_NEG200_ORNEK.csv", "RES_MAX_POS200_ORNEK.csv", "RES_MIN_NEG200_ORNEK.csv", "RES_MIN_POS200_ORNEK.csv",
-    "SENS_50_005_ORNEK.csv", "SENS_50_010_ORNEK.csv", "SENS_49_995_ORNEK.csv", "SENS_49_990_ORNEK.csv",
+    "HASSASIYET_ORNEK.csv",
     "VALIDATION_24SAAT_1S_ORNEK.csv"
   ].map((name) => resolve("Ornek_Veriler", "PFK", "HES", name));
   await page.locator("#bulkFiles").setInputFiles(fixtures);
-  await expect(page.locator("#bulkSummary")).toContainText("9 dosya · 9 başarılı");
+  await expect(page.locator("#bulkSummary")).toContainText("6 dosya · 6 başarılı");
+  await page.getByRole("button", { name: "3. Raporlar" }).click();
+  const evidenceDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Ham CSV Kanıt Manifesti" }).click();
+  const evidenceDownload = await evidenceDownloadPromise;
+  const evidenceText = new TextDecoder("utf-8").decode(await readFile(await evidenceDownload.path()));
+  expect(evidenceText).toContain("Dosya;SHA256;Hizmet");
+  expect(evidenceText).toMatch(/[a-f0-9]{64}/);
 
   await page.getByRole("button", { name: "2. Grafikler" }).click();
   const canvas = page.locator("canvas").first();
   await expect(canvas).toBeVisible();
-  const before = Number(await page.locator(".chart-range input").first().inputValue());
+  const rangeInput = page.locator(".chart-range input").first();
+  const before = await rangeInput.inputValue();
   await page.getByRole("button", { name: "Zoom +" }).first().click();
-  await expect.poll(async () => Number(await page.locator(".chart-range input").first().inputValue())).not.toBe(before);
+  await expect.poll(async () => rangeInput.inputValue()).not.toBe(before);
   await page.locator("details.chart-details").first().locator("summary").click();
   await expect(page.locator("details.chart-details").first()).not.toHaveAttribute("open", "");
   await page.locator("details.chart-details").first().locator("summary").click();
@@ -42,7 +50,8 @@ test("loads PFK files, renders charts, criteria and reports without console erro
   await page.getByRole("button", { name: "3. Raporlar" }).click();
   await page.getByRole("button", { name: "Önizleme Oluştur" }).click();
   await expect(page.locator("#reportPaper")).toContainText("PRİMER FREKANS KONTROL PERFORMANS TEST RAPORU");
-  await expect(page.locator("#reportPaper")).toContainText("RAPOR İÇİNDE KULLANILAN DEĞİŞKENLER");
+  await expect(page.locator("#reportPaper")).toContainText("B) TEKNİK VERİLER");
+  await expect(page.locator("#reportPaper")).toContainText("HAM CSV SHA-256 KANIT MANİFESTİ");
   await expect(page.locator("#reportPaper")).toContainText("İNCELEME GEREKLİ");
   await expect(page.locator("#reportPaper")).not.toContainText("ORİJİNAL FORMAT / KAYNAK BELGE REFERANSI");
   expect(errors).toEqual([]);
@@ -72,7 +81,7 @@ test("downloads Turkish UTF-8 BOM CSV and keeps PFK campaign controls scoped", a
   await expect(page.getByRole("button", { name: "Santral", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "4. Kriterler" }).click();
   await expect(page.getByRole("heading", { name: "PFK Çok Ünite Adım Kontrolü" })).toBeVisible();
-  await expect(page.locator("#criteriaContent details.criteria-step")).toHaveCount(20);
+  await expect(page.locator("#criteriaContent details.criteria-step")).toHaveCount(14);
 });
 
 test("treats CSV metadata as text and keeps mobile navigation usable", async ({ page }) => {
@@ -91,6 +100,12 @@ test("treats CSV metadata as text and keeps mobile navigation usable", async ({ 
   await expect(page.locator("#reportPaper")).toContainText(marker);
   expect(await page.locator("#reportPaper img[data-xss]").count()).toBe(0);
   expect(await page.evaluate(() => window.__XSS)).not.toBe(true);
+
+  await page.getByRole("button", { name: "5. Ayarlar" }).click();
+  await page.locator("#settingsContent textarea").first().fill("Özel kapsam: {{TESIS_ADI}}");
+  await page.getByRole("button", { name: "3. Raporlar" }).click();
+  await page.getByRole("button", { name: "Önizleme Oluştur" }).click();
+  await expect(page.locator("#reportPaper")).toContainText("Özel kapsam:");
 
   await page.setViewportSize({ width: 600, height: 900 });
   await page.locator("#sideToggle").click();

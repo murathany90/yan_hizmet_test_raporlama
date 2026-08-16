@@ -1,4 +1,4 @@
-﻿# YHDA_VERSION=0.6.1
+﻿# YHDA_VERSION=0.6.2
 # TEST_SERVICE=PFK
 # PLANT_TYPE=DGKCS
 # STEP_ID=RES_MAX_POS200
@@ -39,5 +39,5 @@
 # LIMITER_SETTING=Normal işletme
 # SIGNAL_GENERATOR=Kontrol sistemi üzerinden frekans simülasyonu
 # UNIT_NOMINAL_SPEED_RPM=3000
-time_s;grid_frequency_hz;test_frequency_hz;active_power_mw;active_power_reference_mw;fuel_valve_pct
-0;50,000;50,000;;;0,000
+ZAMAN;SIRA_NO;grid_frequency_hz;test_frequency_hz;active_power_mw;active_power_reference_mw;fuel_valve_pct
+16.8.2026 00:00:00,0s;1;50,000;50,000;;;

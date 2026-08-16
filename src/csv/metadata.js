@@ -1,4 +1,4 @@
-import { CONFIGS } from "../app/config.js";
+import { CONFIGS } from "../app/config-v062.js";
 
 export const REQUIRED_ROUTE_METADATA = ["TEST_SERVICE", "PLANT_TYPE", "STEP_ID"];
 export const PFK_CAMPAIGN_METADATA = [
@@ -27,7 +27,9 @@ export function resolveCsvRoute(metadata, configs = CONFIGS) {
   if (!config) {
     throw new Error(`Desteklenmeyen TEST_SERVICE/PLANT_TYPE: ${route.service}/${route.plant}`);
   }
-  const step = config.steps.find((candidate) => candidate.id === route.stepId);
+  let step = config.steps.find((candidate) => candidate.id === route.stepId);
+  const legacySensitivityStepId = route.service === "PFK" && /^(SENS_|BESS_SENS_)/.test(route.stepId) ? route.stepId : "";
+  if (!step && legacySensitivityStepId) step = config.steps.find((candidate) => candidate.id === "HASSASIYET");
   if (!step) {
     throw new Error(`${route.service} ${route.plant} için STEP_ID=${route.stepId} bulunamadı.`);
   }
@@ -36,7 +38,7 @@ export function resolveCsvRoute(metadata, configs = CONFIGS) {
     throw new Error("Kampanya/ünite metadata alanları yalnız PFK çok üniteli çalışma alanında kullanılabilir.");
   }
   const isPfkCampaign = route.service === "PFK" && markedCampaignFields.length > 0;
-  if (!isPfkCampaign) return { ...route, configKey, config, step, isPfkCampaign: false };
+  if (!isPfkCampaign) return { ...route, stepId: step.id, configKey, config, step, legacySensitivityStepId, isPfkCampaign: false };
 
   const campaignMissing = PFK_CAMPAIGN_METADATA.filter((field) => !String(metadata[field] ?? "").trim());
   if (campaignMissing.length) {
@@ -52,6 +54,7 @@ export function resolveCsvRoute(metadata, configs = CONFIGS) {
   }
   return {
     ...route,
+    stepId: step.id,
     configKey,
     config,
     step,
@@ -66,7 +69,8 @@ export function resolveCsvRoute(metadata, configs = CONFIGS) {
       unitName: String(metadata.UNIT_NAME).trim(),
       unitCount,
       eventId: String(metadata.EVENT_ID).trim(),
-      runId: String(metadata.RUN_ID).trim()
+      runId: String(metadata.RUN_ID).trim(),
+      legacySensitivityStepId
     }
   };
 }

@@ -1,8 +1,17 @@
-# TEİAŞ-YHDA v0.6.1
+# TEİAŞ-YHDA v0.6.2
 
 TEİAŞ Yan Hizmetler Doğrulama Aracı; PFK, RGDH, HFK, SFHM ve SFK test kayıtlarını yerel olarak doğrulayan, grafikleyen ve ortak bir rapor modelinden PDF/DOCX çıktısı üreten çevrimdışı odaklı bir web/Tauri uygulamasıdır.
 
 > HFK, SFHM ve resmî ayrıntılı formatı repository kaynaklarında bulunmayan EDÜ/EDT-SFK çıktıları yalnız **Teknik Ön Değerlendirme / Taslak** statüsündedir; resmî TEİAŞ raporu veya sertifikası yerine geçmez.
+
+## v0.6.2 — gerçek zaman ekseni, kanıt zinciri ve belge ayarları
+
+- Yeni oluşturulan tüm CSV şablonları `ZAMAN;SIRA_NO` ile başlar. `12.3.2026 11:09:19,1s` biçimindeki gerçek zaman damgası grafik, rapor ve doğrulama ekseninde korunur; eski `time_s` dosyaları yalnız geriye dönük okuma için kabul edilir.
+- PFK hassasiyet testi, tesis başına dört ayrı adım yerine tek `HASSASIYET` zaman serisidir. Konfigürasyon envanteri 75 şablondur; buna iki üniteli HES kampanya örneğinin 12 test kaydı eklenerek 87 doğrulanan test kaydı sağlanır.
+- Her yüklenen ham CSV baytı için SHA-256 kanıt kaydı oluşturulur. “Ham CSV Kanıt Manifesti” indirimi, bu özeti rapor/tutanak ekiyle aynı alanlarda verir; özet elektronik imza değildir.
+- Çok üniteli PFK, sadece ortak zaman damgalarında/örnekleme toleransında hizalanan değerleri toplar. Beklenen güç, gerçek referans kanalı ya da `Pset ± RPmax` ile ünite bazında hesaplanır; kurulu güçle indeks bazlı toplama yapılmaz.
+- Beşinci sekmedeki Ayarlar alanı; kurum/üst-alt bilgi, TEİAŞ amblemi ve filigranı, imza rolleri, tesis varsayılanları ve standart rapor/tutanak/sertifika metinlerini saklar.
+- Rapor ve tutanak PFK A–G / ek / kanıt hiyerarşisini, sertifika ise grafik içermeyen iki A4 sayfayı kullanır.
 
 ## v0.6.1 — PFK kampanya ve resmî raporlama güvenliği
 
@@ -17,10 +26,10 @@ TEİAŞ Yan Hizmetler Doğrulama Aracı; PFK, RGDH, HFK, SFHM ve SFK test kayıt
 
 - `TEST_SERVICE`, `PLANT_TYPE`, `STEP_ID` metadata alanlarıyla hizmet/tesis/adım otomatik yönlendirmesi
 - UTF-8 BOM, `;` ayırıcı, zorunlu sütun, satır uzunluğu, NaN, monoton zaman, örnekleme ve asgari süre doğrulaması
-- 87 CSV şablonu ve 87 gerçekçi örnek veri için otomatik regresyon kapısı
+- 75 CSV şablonu ve 87 gerçekçi test kaydı için otomatik regresyon kapısı; ek üç manifest kayıt sayısına dahil edilmez
 - Aynı test adımı için kullanıcı onaylı değiştirme ve ayrıntılı toplu yükleme özeti
 - Büyük kayıtlar için binary-search görünür dilim, extrema koruyan min/max downsample ve iptal edilebilir `requestAnimationFrame`
-- Zoom, pan, sayısal zaman aralığı, accordion durumunun korunması, PNG/SVG grafik dışa aktarımı
+- Zoom, pan, gerçek zaman seçicisi, accordion durumunun korunması, PNG/SVG grafik dışa aktarımı
 - Tek `ReportModel` üzerinden HTML önizleme, gerçek A4 PDF, gerçek DOCX ve yazdırma
 - Web indirme desteği ile Tauri v2 dialog/fs yerel dosya köprüsü
 - Türkçe karakter bütünlüğü ve Playwright tabanlı gerçek tarayıcı testi
@@ -67,9 +76,10 @@ npm.cmd run tauri -- build
 2. `Dosyaları Seç` ile birden çok CSV ekleyin. Uygulama metadata üzerinden her dosyayı doğru moda ve test adımına yönlendirir.
 3. Hatalı dosyalar state'e alınmaz; sonuç panelinde dosya adıyla birlikte gerekçe gösterilir.
 4. Grafikler sekmesinde adımı seçin; tekerlek/düğmelerle zoom, sürüklemeyle pan yapın veya zaman aralığını sayısal girin.
-5. Raporlar sekmesinde rapor tipini seçip önizleme, PDF, Word veya yazdırma aksiyonunu kullanın.
+5. Raporlar sekmesinde rapor tipini seçip önizleme, PDF, Word, ham CSV kanıt manifesti veya yazdırma aksiyonunu kullanın.
 6. Kriterler sekmesinde test prosedürü, teknik kriterler ve ön kontrol/sinyal listesini birlikte inceleyin.
-7. Çok üniteli PFK gerekiyorsa yalnız PFK çalışma alanındaki **Santral / Ünite Yapısı** kartından etkinleştirin; kampanya ZIP'indeki CSV'leri değiştirmeden kullanın.
+7. Ayarlar sekmesinden belge üst/alt bilgisi, standart metinler, filigran ve varsayılan teknik bilgileri yönetin.
+8. Çok üniteli PFK gerekiyorsa yalnız PFK çalışma alanındaki **Santral / Ünite Yapısı** kartından etkinleştirin; kampanya ZIP'indeki CSV'leri değiştirmeden kullanın.
 
 ## CSV sözleşmesi
 
@@ -81,6 +91,15 @@ CSV dosyaları UTF-8 BOM ve `;` ayırıcı kullanır. Ondalık sayılarda hem `1
 # STEP_ID=RES_MAX_NEG200
 # SAMPLE_PERIOD_MS=100
 ```
+
+Yeni şablonlarda ilk iki veri kolonu mutlaka aşağıdaki sıradadır:
+
+```text
+ZAMAN;SIRA_NO;...
+12.3.2026 11:09:19,1s;1;...
+```
+
+`ZAMAN` monoton artmalı, `SIRA_NO` 1’den başlayarak ardışık olmalıdır. Eski `time_s` başlığı yalnız mevcut saha/arşiv dosyalarını okuyabilmek için desteklenir; yeni veri ve şablon üretiminde kullanılmaz.
 
 PFK çok üniteli kampanya CSV'lerinde buna ek olarak `CAMPAIGN_ID`, `FACILITY_ID`, `TEST_SCOPE=MULTI_UNIT`, `ENTITY_TYPE`, `ENTITY_ID`, `UNIT_ID`, `UNIT_NAME`, `UNIT_COUNT`, `EVENT_ID` ve `RUN_ID` zorunludur. Bu alanlar PFK dışındaki rotalarda kabul edilmez.
 
@@ -109,7 +128,7 @@ npm.cmd run test:all
 Beklenen CSV envanteri:
 
 ```text
-CSV templates: 87/87 PASS
+CSV templates: 75/75 PASS
 Example CSV: 87/87 PASS
 ```
 
@@ -118,8 +137,8 @@ Example CSV: 87/87 PASS
 ```text
 index.html
 └─ src/main.js                 UI orkestrasyonu ve tek bootstrap
-   ├─ app/                     sabit konfigürasyon, varlıklar, state
-   ├─ csv/                     parser, metadata router, validator
+   ├─ app/                     v0.6.2 konfigürasyonu, belge ayarları, varlıklar, state
+   ├─ csv/                     parser, metadata router, validator, ham kanıt özeti
    ├─ analysis/                saf hizmet değerlendirmeleri
    ├─ charts/                  seri seçimi, downsample, Canvas/SVG motoru
    ├─ criteria/                prosedür ve ön kontroller
@@ -141,6 +160,7 @@ Rapor görselleri Vite/Tauri paketine göreli asset olarak alınır; çalışma 
 
 - Ayrıntılı ilk durum, kök nedenler ve doğrulama kanıtları: [`docs/REPO_AUDIT.md`](docs/REPO_AUDIT.md)
 - v0.6.1 başlangıç denetimi: [`docs/V061_AUDIT.md`](docs/V061_AUDIT.md)
+- v0.6.2 zaman/veri/rapor denetimi: [`docs/V062_AUDIT.md`](docs/V062_AUDIT.md)
 - Kaynak format → YHDA alan eşlemesi: [`docs/TEIAS_REPORT_FORMAT_MAPPING.md`](docs/TEIAS_REPORT_FORMAT_MAPPING.md)
 - Sürüm değişiklikleri: [`CHANGELOG.md`](CHANGELOG.md)
 - Eski tek-dosya uygulama yalnız karşılaştırma/migrasyon referansı olarak `TEIAS_YHDA_v0_5_1.html` içinde korunur.

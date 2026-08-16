@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CONFIGS, MENU } from "../../src/app/config.js";
+import { CONFIGS, MENU } from "../../src/app/config-v062.js";
 import { inferUnit } from "../../src/utils/text.js";
 
 describe("UTF-8 integrity", () => {

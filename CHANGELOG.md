@@ -2,6 +2,28 @@
 
 Bu proje [Semantic Versioning](https://semver.org/) yaklaşımını izler.
 
+## [0.6.2] - 2026-08-16
+
+### Eklendi
+
+- `ZAMAN;SIRA_NO` kanonik CSV zaman sözleşmesi, Türkçe tarih/saat ayrıştırması ve gerçek zaman eksenli grafik/tooltip/zaman seçicisi.
+- PFK için tek `HASSASIYET` kaydı, 75 şablonluk konfigürasyon envanteri ve iki üniteli HES kampanya örnek veri seti.
+- Ham CSV baytlarından SHA-256 kanıt zinciri, kanıt manifesti indirimi ve rapor/tutanak kanıt eki.
+- PFK ünite formuna `Pnom`, `RPmax` ve “teste dahil” alanları; yalnız zaman hizası geçerli noktalarla tesis toplamı/normalize tepki karşılaştırması.
+- Belge metinleri, kurum bilgileri, filigran/amblemler, imza rolleri ve tesis varsayılanları için kalıcı Ayarlar sekmesi.
+
+### Değişti
+
+- Performans raporu PFK A–G hiyerarşisini, tutanak ekipman/kanal/ek/teslim yapısını, sertifika ise grafik içermeyen iki A4 sayfayı kullanır.
+- Teknik ekipman tablosu gerçek cihaz türü, marka, model, seri no, yazılım, doğruluk, kalibrasyon no/tarihi alanlarına ayrıldı.
+- Çok üniteli kampanya beklenen gücü kurulu güçten değil, aktif güç referansından veya `Pset ± RPmax` kuralından hesaplar.
+
+### Düzeltildi
+
+- PFK çok üniteli tesis toplamındaki sıra numarası/indeks bazlı eşleşme kaldırıldı; eksik veya tolerans dışı zaman noktaları toplamdan dışlanır.
+- Tekrarlanan eski hassasiyet adımlarının yeni HASSASIYET kaydına migrasyonunda zaman damgası sürekliliği doğrulandı.
+- Ayarlar sekmesindeki metin alanının tarayıcıda hata üretmesi ve boş PDF tablolarında hücre sayısı uyuşmazlığı düzeltildi.
+
 ## [0.6.1] - 2026-08-16
 
 ### Eklendi

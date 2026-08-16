@@ -26,7 +26,12 @@ export function validateParsedCsv(parsed, route, options = {}) {
   const { allowEmpty = false, sampleTolerance = 0.02 } = options;
   const errors = [];
   const warnings = [];
-  const missingColumns = route.step.columns.filter((column) => !parsed.headers.includes(column));
+  const hasLegacyTime = parsed.headers.includes("time_s");
+  const missingColumns = route.step.columns.filter((column) => {
+    if (column === "zaman") return !parsed.headers.includes("zaman") && !hasLegacyTime;
+    if (column === "sira_no") return !parsed.headers.includes("sira_no") && !hasLegacyTime;
+    return !parsed.headers.includes(column);
+  });
   if (missingColumns.length) {
     errors.push(`eksik sütun: ${missingColumns.join(", ")}`);
   }
@@ -39,7 +44,7 @@ export function validateParsedCsv(parsed, route, options = {}) {
   let nanCount = 0;
   let firstNan = null;
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
-    for (const column of route.step.columns) {
+    for (const column of route.step.columns.filter((column) => !["zaman", "sira_no"].includes(column))) {
       if (!Number.isFinite(rows[rowIndex][column])) {
         nanCount += 1;
         firstNan ??= { row: rowIndex + 2, column };
@@ -57,7 +62,11 @@ export function validateParsedCsv(parsed, route, options = {}) {
     if (!Number.isFinite(delta) || delta <= 0) monotonic = false;
     else deltas.push(delta);
   }
-  if (rows.length > 1 && !monotonic) errors.push("time_s monoton artmıyor");
+  if (rows.length > 1 && !monotonic) errors.push(hasLegacyTime ? "time_s monoton artmıyor" : "ZAMAN monoton artmıyor");
+  if (!hasLegacyTime && rows.length) {
+    const invalidSequence = rows.some((row, index) => !Number.isInteger(row.sira_no) || row.sira_no !== index + 1);
+    if (invalidSequence) errors.push("SIRA_NO 1’den başlayan ardışık kayıt numarası olmalıdır");
+  }
 
   const sampleSeconds = median(deltas);
   const metadataSampleMs = parseLocaleNumber(parsed.metadata.SAMPLE_PERIOD_MS);
@@ -97,4 +106,3 @@ export function validateParsedCsv(parsed, route, options = {}) {
     }
   };
 }
-

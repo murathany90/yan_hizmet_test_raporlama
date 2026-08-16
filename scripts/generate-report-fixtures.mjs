@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { CONFIGS } from "../src/app/config.js";
+import { CONFIGS } from "../src/app/config-v062.js";
+import { DEFAULT_DOCUMENT_SETTINGS } from "../src/app/settings.js";
 import { buildReportModel } from "../src/report/model.js";
 import { createPdfBuffer } from "../src/report/pdf.js";
 import { createDocxBuffer } from "../src/report/docx.js";
@@ -17,7 +18,7 @@ const chartDataUrl = dataUrl("qa_artifacts/fixture-chart.png", "image/png");
 const records = config.steps.map((step, index) => ({
   name: `${step.id}_ÖRNEK.csv`,
   step,
-  rows: [{ time_s: 0, active_power_mw: 100 }],
+  rows: [{ zaman: "16.8.2026 09:00:00,0s", sira_no: 1, timestamp_ms: 1786860000000, time_s: 0, active_power_mw: 100 }],
   analysis: {
     status: index < 8 ? "GEÇTİ" : "YÜKLENDİ",
     detail: index < 8 ? "Örnek kayıt doğrulandı; sayısal sonuç rapora aktarıldı." : "24 saatlik doğrulama kaydı yüklendi.",
@@ -47,12 +48,23 @@ const model = buildReportModel({
   records,
   chartProvider: (record) => record.step.id === config.steps[0].id ? [{ title: "Frekans ve Aktif Güç Tepkisi", dataUrl: chartDataUrl }] : [],
   logoDataUrl: dataUrl("teias_logo.png", "image/png"),
-  referenceDataUrl: dataUrl("Rapor_Format_Referanslari/pfk_report.jpg", "image/jpeg")
+  settings: DEFAULT_DOCUMENT_SETTINGS
 });
 
-const [pdf, docx] = await Promise.all([createPdfBuffer(model), createDocxBuffer(model)]);
+const certificateModel = buildReportModel({
+  service: "PFK", plant: "HES", config, metadata: model.metadata,
+  reportType: "Test Sertifikası", reportNote: model.reportNote, records,
+  chartProvider: () => [], logoDataUrl: dataUrl("teias_logo.png", "image/png"), settings: DEFAULT_DOCUMENT_SETTINGS
+});
+const [pdf, docx, certificatePdf, certificateDocx] = await Promise.all([
+  createPdfBuffer(model), createDocxBuffer(model), createPdfBuffer(certificateModel), createDocxBuffer(certificateModel)
+]);
 writeFileSync(resolve(outputDirectory, "TEIAS-YHDA-QA.pdf"), pdf);
 writeFileSync(resolve(outputDirectory, "TEIAS-YHDA-QA.docx"), docx);
+writeFileSync(resolve(outputDirectory, "TEIAS-YHDA-QA-Sertifika.pdf"), certificatePdf);
+writeFileSync(resolve(outputDirectory, "TEIAS-YHDA-QA-Sertifika.docx"), certificateDocx);
 writeFileSync(resolve(outputDirectory, "report-model.json"), JSON.stringify(model, null, 2), "utf8");
 console.log(`Generated PDF: ${pdf.byteLength} bytes`);
 console.log(`Generated DOCX: ${docx.byteLength} bytes`);
+console.log(`Generated certificate PDF: ${certificatePdf.byteLength} bytes`);
+console.log(`Generated certificate DOCX: ${certificateDocx.byteLength} bytes`);

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#063f68">
-    <title>TEİAŞ-YHDA v0.6.1</title>
+    <title>TEİAŞ-YHDA v0.6.2</title>
     <link rel="stylesheet" href="/src/styles/main.css">
   </head>
   <body>
@@ -20,7 +20,7 @@
       </div>
       <div class="header-actions">
         <span id="runtimeBadge" class="runtime-badge">Web</span>
-        <span class="version-badge">v0.6.1</span>
+        <span class="version-badge">v0.6.2</span>
       </div>
     </header>
 
@@ -40,6 +40,7 @@
           <button class="tab-button" type="button" data-tab="chartsPanel" aria-selected="false">2. Grafikler</button>
           <button class="tab-button" type="button" data-tab="reportsPanel" aria-selected="false">3. Raporlar</button>
           <button class="tab-button" type="button" data-tab="criteriaPanel" aria-selected="false">4. Kriterler</button>
+          <button class="tab-button" type="button" data-tab="settingsPanel" aria-selected="false">5. Ayarlar</button>
         </nav>
 
         <section id="uploadPanel" class="tab-panel active">
@@ -125,6 +126,7 @@
               <button id="pdfReport" class="button success" type="button">PDF Oluştur</button>
               <button id="docxReport" class="button success" type="button">Word Raporu Oluştur</button>
               <button id="pfkCampaignCertificates" class="button secondary" type="button" hidden>Ünite Sertifikaları ZIP</button>
+              <button id="rawEvidenceManifest" class="button ghost" type="button">Ham CSV Kanıt Manifesti</button>
               <button id="printReport" class="button secondary" type="button">Yazdır</button>
             </div>
           </article>
@@ -135,6 +137,18 @@
 
         <section id="criteriaPanel" class="tab-panel">
           <div id="criteriaContent"></div>
+        </section>
+
+        <section id="settingsPanel" class="tab-panel">
+          <div class="section-heading">
+            <div>
+              <span class="section-kicker">Belge yapılandırması</span>
+              <h3>Ayarlar</h3>
+              <p>Bu alanlardaki metinler güvenli biçimde rapor, tutanak ve sertifika önizleme/PDF/DOCX çıktılarında kullanılır.</p>
+            </div>
+            <button id="resetSettings" class="button ghost" type="button">Varsayılana Dön</button>
+          </div>
+          <div id="settingsContent"></div>
         </section>
       </main>
     </div>

@@ -1,6 +1,7 @@
-import { CONFIGS } from "./config.js";
+import { CONFIGS } from "./config-v062.js";
+import { loadDocumentSettings, patchDocumentSettings as patchSettings, resetDocumentSettings as resetSettings } from "./settings.js";
 
-export const APP_VERSION = "0.6.1";
+export const APP_VERSION = "0.6.2";
 
 export function modeKey(service, plant) {
   return `${service}:${plant}`;
@@ -43,6 +44,7 @@ export function createAppState() {
     chartViews: new Map(),
     chartOpenState: new Map(),
     chartSeriesVisibility: new Map(),
+    documentSettings: loadDocumentSettings(),
     reportModel: null,
     reportDirty: true
   };
@@ -61,7 +63,10 @@ export function createPfkCampaign(metadata = {}, unitCount = 2) {
     runId: "RUN-001",
     units: Array.from({ length: count }, (_, index) => ({
       unitId: `U${index + 1}`,
-      unitName: `Ünite ${index + 1}`
+      unitName: `Ünite ${index + 1}`,
+      pnomMw: String(metadata.UNIT_PNOM_MW || metadata.PNOM_MW || ""),
+      rpmaxMw: String(metadata.RPMAX_MW || ""),
+      included: true
     }))
   };
 }
@@ -86,7 +91,10 @@ export function setPfkCampaign(state, service, plant, campaign) {
       runId: String(campaign.runId || "RUN-001").trim(),
       units: units.map((unit, index) => ({
         unitId: String(unit.unitId || `U${index + 1}`).trim().toUpperCase(),
-        unitName: String(unit.unitName || `Ünite ${index + 1}`).trim()
+        unitName: String(unit.unitName || `Ünite ${index + 1}`).trim(),
+        pnomMw: String(unit.pnomMw ?? unit.pnomMW ?? ""),
+        rpmaxMw: String(unit.rpmaxMw ?? unit.rpmaxMW ?? ""),
+        included: unit.included !== false
       }))
     });
   }
@@ -121,11 +129,23 @@ export function recordsForMode(state, service = state.service, plant = state.pla
   const config = configFor(service, plant);
   const campaign = getPfkCampaign(state, service, plant);
   if (service === "PFK" && campaign?.enabled) {
-    return campaign.units.flatMap((unit) => config.steps
+    return campaign.units.filter((unit) => unit.included !== false).flatMap((unit) => config.steps
       .map((step) => state.records.get(recordKey(service, plant, step.id, { campaignId: campaign.campaignId, unitId: unit.unitId, runId: campaign.runId })))
       .filter(Boolean));
   }
   return config.steps
     .map((step) => state.records.get(recordKey(service, plant, step.id)))
     .filter(Boolean);
+}
+
+export function patchDocumentSettings(state, values) {
+  state.documentSettings = patchSettings(state.documentSettings, values);
+  state.reportDirty = true;
+  return state.documentSettings;
+}
+
+export function resetDocumentSettings(state) {
+  state.documentSettings = resetSettings();
+  state.reportDirty = true;
+  return state.documentSettings;
 }

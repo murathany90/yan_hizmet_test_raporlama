@@ -44,13 +44,20 @@ function responsePercent(responses, reserve, seconds) {
   return Number.isFinite(response) && reserve ? (response / Math.abs(reserve)) * 100 : Number.NaN;
 }
 
+function pfkEventTime(rows) {
+  const baselineFrequency = average(rows.slice(0, Math.min(200, rows.length)).map((row) => number(row.test_frequency_hz)));
+  const event = rows.find((row) => Math.abs(number(row.test_frequency_hz) - baselineFrequency) >= 0.03);
+  return event ? number(event.time_s) : 0;
+}
+
 function evaluatePfkReserve(record, metadata, plant) {
   const rows = record.rows;
   const pnom = number(metadata.PNOM_MW, 500);
   const reserve = number(metadata.RPMAX_MW, 25);
   const direction = record.step.id.includes("NEG200") ? 1 : -1;
-  const baseline = average(rows.filter((row) => number(row.time_s) < 0 && number(row.time_s) >= -20).map((row) => number(row.active_power_mw)));
-  const responses = rows.map((row) => ({ time: number(row.time_s), value: direction * (number(row.active_power_mw) - baseline) }));
+  const eventTime = pfkEventTime(rows);
+  const baseline = average(rows.filter((row) => number(row.time_s) < eventTime).slice(-200).map((row) => number(row.active_power_mw)));
+  const responses = rows.map((row) => ({ time: number(row.time_s) - eventTime, value: direction * (number(row.active_power_mw) - baseline) }));
   const noise = standardDeviation(responses.filter((item) => item.time < 0).map((item) => item.value));
   const detectionThreshold = Math.max(3 * noise, 0.0005 * pnom, 0.005 * reserve);
   let delay = Number.NaN;
@@ -78,12 +85,13 @@ function evaluatePfkReserve(record, metadata, plant) {
 function evaluatePfkBessReserve(record, metadata) {
   const reserve = number(metadata.RPMAX_MW, 25);
   const direction = record.step.id.includes("NEG200") ? 1 : -1;
-  const baseline = average(record.rows.filter((row) => number(row.time_s) < 0).map((row) => number(row.active_power_mw)));
+  const eventTime = pfkEventTime(record.rows);
+  const baseline = average(record.rows.filter((row) => number(row.time_s) < eventTime).slice(-200).map((row) => number(row.active_power_mw)));
   let delay = Number.NaN;
   let t50 = Number.NaN;
   let t100 = Number.NaN;
   for (const row of record.rows) {
-    const time = number(row.time_s);
+    const time = number(row.time_s) - eventTime;
     const response = direction * (number(row.active_power_mw) - baseline);
     if (time < 0) continue;
     if (!Number.isFinite(delay) && response >= 0.01 * reserve) delay = time;
@@ -95,6 +103,34 @@ function evaluatePfkBessReserve(record, metadata) {
     status: passed ? "GEÇTİ" : "KALDI",
     detail: `Δtd=${formatMetric(delay)} s; t50=${formatMetric(t50)} s; t100=${formatMetric(t100)} s`,
     metrics: { delaySeconds: delay, t50Seconds: t50, t100Seconds: t100 }
+  };
+}
+
+function evaluatePfkSensitivity(record, metadata) {
+  const rows = record.rows;
+  const baselineFrequency = average(rows.slice(0, Math.min(100, rows.length)).map((row) => number(row.test_frequency_hz)));
+  const segments = [];
+  let active = null;
+  for (const row of rows) {
+    const frequency = number(row.test_frequency_hz);
+    const target = Number.isFinite(frequency) && Math.abs(frequency - baselineFrequency) >= 0.002 ? frequency.toFixed(3) : "";
+    if (target !== active?.target) {
+      if (active?.rows.length >= 5) segments.push(active);
+      active = target ? { target, rows: [row] } : null;
+    } else if (active) active.rows.push(row);
+  }
+  if (active?.rows.length >= 5) segments.push(active);
+  const baselinePower = average(rows.slice(0, Math.min(100, rows.length)).map((row) => number(row.active_power_mw)));
+  const pnom = number(metadata.PNOM_MW, 1);
+  const results = segments.slice(0, 4).map((segment) => {
+    const meanPower = average(segment.rows.map((row) => number(row.active_power_mw)));
+    return { frequencyHz: Number(segment.target), deltaPowerMw: meanPower - baselinePower, sensitivityMwPerHz: (meanPower - baselinePower) / (Number(segment.target) - baselineFrequency) };
+  });
+  const passed = results.length >= 4 && results.every((item) => Number.isFinite(item.deltaPowerMw) && Math.abs(item.deltaPowerMw) <= Math.max(pnom * 0.04, 10));
+  return {
+    status: passed ? "GEÇTİ" : "İNCELEME GEREKLİ",
+    detail: results.length ? `Tek CSV içinde ${results.length}/4 hassasiyet basamağı tespit edildi: ${results.map((item) => `${item.frequencyHz.toFixed(3)} Hz / ΔP=${formatMetric(item.deltaPowerMw, 3)} MW`).join("; ")}` : "Hassasiyet frekans basamakları tek CSV içinde tespit edilemedi.",
+    metrics: { sensitivityResults: results, segmentCount: results.length }
   };
 }
 
@@ -231,6 +267,7 @@ export function evaluateRecord(record, context) {
   const { service, plant, metadata } = context;
   if (service === "PFK" && record.step.kind === "reserve") return evaluatePfkReserve(record, metadata, plant);
   if (service === "PFK" && record.step.kind === "bess_reserve") return evaluatePfkBessReserve(record, metadata);
+  if (service === "PFK" && record.step.kind === "sensitivity") return evaluatePfkSensitivity(record, metadata);
   if (service === "HFK") return evaluateHfk(record, metadata);
   if (service === "RGDH") return evaluateRgdh(record, metadata);
   if (service === "SFK") return evaluateSfk(record, metadata, plant);

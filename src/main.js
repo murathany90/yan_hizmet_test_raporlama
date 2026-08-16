@@ -1,4 +1,4 @@
-import { CONFIGS, DETAILED_CRITERIA, MENU } from "./app/config.js";
+import { CONFIGS, DETAILED_CRITERIA, MENU } from "./app/config-v062.js";
 import { TEIAS_LOGO_URL } from "./app/assets.js";
 import {
   APP_VERSION,
@@ -9,8 +9,10 @@ import {
   getPfkCampaign,
   modeKey,
   patchModeMetadata,
+  patchDocumentSettings,
   recordKey,
   recordsForMode,
+  resetDocumentSettings,
   setPfkCampaign
 } from "./app/state.js";
 import { ChartManager } from "./charts/engine.js";
@@ -20,6 +22,7 @@ import { hasUtf8Bom, makeCsvTemplate, parseCsv } from "./csv/parser.js";
 import { resolveCsvRoute } from "./csv/metadata.js";
 import { validateParsedCsv } from "./csv/validator.js";
 import { allTemplatesZip, pfkCampaignTemplatesZip } from "./csv/templates.js";
+import { rawCsvEvidence, rawEvidenceManifestCsv } from "./csv/evidence.js";
 import { askReplace, isTauriRuntime, openCsvFilesNative, saveBinary } from "./platform/files.js";
 import { buildReportModel } from "./report/model.js";
 import { renderReportPreview } from "./report/preview.js";
@@ -40,6 +43,7 @@ const state = createAppState();
 const elements = {};
 let logoDataUrlPromise;
 let booted = false;
+let settingsPreviewTimer;
 
 function byId(id) {
   return document.getElementById(id);
@@ -73,6 +77,7 @@ function setActiveTab(tabId) {
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === tabId));
   if (tabId === "chartsPanel") renderCharts();
   if (tabId === "criteriaPanel") renderCriteria();
+  if (tabId === "settingsPanel") renderSettings();
 }
 
 function renderSidebar() {
@@ -167,13 +172,26 @@ function campaignField(key, label, value, onInput, type = "text") {
   return group;
 }
 
+function campaignToggle(key, label, checked, onInput) {
+  const group = element("div", { className: "field-group campaign-toggle" });
+  const input = document.createElement("input");
+  input.id = `campaign-${key}`;
+  input.type = "checkbox";
+  input.checked = checked;
+  const fieldLabel = element("label", { text: label });
+  fieldLabel.htmlFor = input.id;
+  input.addEventListener("change", () => onInput(input.checked));
+  group.append(input, fieldLabel);
+  return group;
+}
+
 function updateCampaign(values) {
   const current = getPfkCampaign(state);
   if (!current) return;
   const next = { ...current, ...values };
   if (values.unitCount !== undefined) {
     const count = Math.max(2, Math.min(20, Number.parseInt(values.unitCount, 10) || 2));
-    next.units = Array.from({ length: count }, (_, index) => current.units[index] ?? ({ unitId: `U${index + 1}`, unitName: `Ünite ${index + 1}` }));
+    next.units = Array.from({ length: count }, (_, index) => current.units[index] ?? ({ unitId: `U${index + 1}`, unitName: `Ünite ${index + 1}`, pnomMw: "", rpmaxMw: "", included: true }));
   }
   setPfkCampaign(state, state.service, state.plant, next);
   renderPfkCampaign();
@@ -200,10 +218,13 @@ function renderPfkCampaign() {
     campaignField("run", "RUN_ID", campaign.runId, (value) => updateCampaign({ runId: value }))
   );
   campaign.units.forEach((unit, index) => {
-    elements.pfkCampaignForm.append(campaignField(`unit-${index}`, `${unit.unitId} UNIT_NAME`, unit.unitName, (value) => {
-      const nextUnits = campaign.units.map((candidate, candidateIndex) => candidateIndex === index ? { ...candidate, unitName: value } : candidate);
-      updateCampaign({ units: nextUnits });
-    }));
+    const patchUnit = (values) => updateCampaign({ units: campaign.units.map((candidate, candidateIndex) => candidateIndex === index ? { ...candidate, ...values } : candidate) });
+    elements.pfkCampaignForm.append(
+      campaignField(`unit-${index}`, `${unit.unitId} Ünite adı`, unit.unitName, (value) => patchUnit({ unitName: value })),
+      campaignField(`pnom-${index}`, `${unit.unitId} Pnom [MW]`, unit.pnomMw, (value) => patchUnit({ pnomMw: value }), "number"),
+      campaignField(`rpmax-${index}`, `${unit.unitId} RPmax [MW]`, unit.rpmaxMw, (value) => patchUnit({ rpmaxMw: value }), "number"),
+      campaignToggle(`included-${index}`, `${unit.unitId} teste dahil`, unit.included !== false, (value) => patchUnit({ included: value }))
+    );
   });
   elements.pfkCampaignForm.append(element("div", { className: "campaign-note", text: "Kampanya CSV'lerinde CAMPAIGN_ID, FACILITY_ID, TEST_SCOPE, ENTITY_TYPE, ENTITY_ID, UNIT_ID, UNIT_NAME, UNIT_COUNT, STEP_ID, EVENT_ID ve RUN_ID zorunludur. Kayıt rotası ünite ve çalıştırma kimliğiyle ayrılır." }));
 }
@@ -317,13 +338,23 @@ async function processOneFile(file, expected) {
   const validation = validateParsedCsv(parsed, route);
   if (!validation.ok) throw new Error(validation.errors.join("; "));
   if (route.isPfkCampaign) {
+    const fileUnitValues = {
+      pnomMw: String(parsed.metadata.UNIT_PNOM_MW ?? parsed.metadata.PNOM_MW ?? "").trim(),
+      rpmaxMw: String(parsed.metadata.RPMAX_MW ?? "").trim()
+    };
+    const applyFileUnitValues = (unit) => ({
+      ...unit,
+      unitName: unit.unitId === route.campaign.unitId ? route.campaign.unitName : unit.unitName,
+      pnomMw: unit.unitId === route.campaign.unitId ? (unit.pnomMw || fileUnitValues.pnomMw) : unit.pnomMw,
+      rpmaxMw: unit.unitId === route.campaign.unitId ? (unit.rpmaxMw || fileUnitValues.rpmaxMw) : unit.rpmaxMw
+    });
     const existingCampaign = getPfkCampaign(state, route.service, route.plant);
     const units = existingCampaign?.campaignId === route.campaign.campaignId
-      ? existingCampaign.units.map((unit) => unit.unitId === route.campaign.unitId ? { ...unit, unitName: route.campaign.unitName } : unit)
-      : Array.from({ length: route.campaign.unitCount }, (_, index) => ({ unitId: `U${index + 1}`, unitName: `Ünite ${index + 1}` }));
+      ? existingCampaign.units.map(applyFileUnitValues)
+      : Array.from({ length: route.campaign.unitCount }, (_, index) => applyFileUnitValues({ unitId: `U${index + 1}`, unitName: `Ünite ${index + 1}`, pnomMw: "", rpmaxMw: "" }));
     const unitIndex = units.findIndex((unit) => unit.unitId === route.campaign.unitId);
-    if (unitIndex >= 0) units[unitIndex] = { unitId: route.campaign.unitId, unitName: route.campaign.unitName };
-    else units.push({ unitId: route.campaign.unitId, unitName: route.campaign.unitName });
+    if (unitIndex >= 0) units[unitIndex] = applyFileUnitValues({ ...units[unitIndex], unitId: route.campaign.unitId });
+    else units.push({ unitId: route.campaign.unitId, unitName: route.campaign.unitName, ...fileUnitValues });
     setPfkCampaign(state, route.service, route.plant, { enabled: true, ...route.campaign, units });
   } else if (route.service === "PFK" && getPfkCampaign(state, route.service, route.plant)?.enabled) {
     throw new Error("Etkin PFK çok üniteli kampanyada kampanya/ünite metadata alanları zorunludur.");
@@ -343,6 +374,7 @@ async function processOneFile(file, expected) {
     rows: validation.rows,
     validation,
     sourceMetadata: { ...parsed.metadata },
+    evidence: await rawCsvEvidence({ bytes, filename: file.name, route, validation, rows: validation.rows }),
     _recordKey: key
   };
   record.analysis = evaluateRecord(record, {
@@ -437,19 +469,48 @@ function campaignChartRecord(record) {
   const campaign = getPfkCampaign(state);
   const scope = state.pfkChartScopeByMode.get(modeKey(state.service, state.plant)) ?? "unit";
   if (!campaign?.enabled || scope === "unit") return record;
-  const matching = campaign.units.map((unit) => state.records.get(recordKey("PFK", state.plant, record.step.id, { campaignId: campaign.campaignId, unitId: unit.unitId, runId: campaign.runId }))).filter(Boolean);
+  const matching = campaign.units.filter((unit) => unit.included !== false).map((unit) => ({ unit, record: state.records.get(recordKey("PFK", state.plant, record.step.id, { campaignId: campaign.campaignId, unitId: unit.unitId, runId: campaign.runId })) })).filter((item) => item.record);
   if (!matching.length) return record;
-  const rows = matching[0].rows.map((baseRow, index) => {
-    const row = { time_s: baseRow.time_s };
-    matching.forEach((item) => { row[item.sourceMetadata.UNIT_ID] = item.rows[index]?.active_power_mw; });
-    row.plant_total_active_power_mw = matching.reduce((sum, item) => sum + (Number(item.rows[index]?.active_power_mw) || 0), 0);
-    row.expected_active_power_mw = Number(getModeMetadata(state).PLANT_TOTAL_INSTALLED_MW || getModeMetadata(state).PNOM_MW || Number.NaN);
+  const timeOf = (row) => Number.isFinite(row.timestamp_ms) ? row.timestamp_ms : row.time_s * 1000;
+  const timestamps = [...new Set(matching.flatMap(({ record: item }) => item.rows.map(timeOf).filter(Number.isFinite)))].sort((left, right) => left - right);
+  const sampleMs = Math.max(...matching.map(({ record: item }) => Number(item.validation?.stats?.sampleMs) || item.step.sampleMs || 100));
+  const toleranceMs = Math.max(20, sampleMs * 0.6);
+  const closest = (rows, target) => {
+    let low = 0; let high = rows.length - 1;
+    while (low <= high) { const middle = Math.floor((low + high) / 2); if (timeOf(rows[middle]) < target) low = middle + 1; else high = middle - 1; }
+    const best = [rows[low], rows[high]].filter(Boolean).sort((left, right) => Math.abs(timeOf(left) - target) - Math.abs(timeOf(right) - target))[0];
+    return best && Math.abs(timeOf(best) - target) <= toleranceMs ? best : null;
+  };
+  const metadata = getModeMetadata(state);
+  const baselines = new Map(matching.map(({ unit, record: item }) => {
+    const values = item.rows.slice(0, Math.min(200, item.rows.length)).map((row) => row.active_power_mw).filter(Number.isFinite);
+    return [unit.unitId, values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : Number.NaN];
+  }));
+  let gaps = 0;
+  const rows = timestamps.map((timestamp, index) => {
+    const row = { timestamp_ms: timestamp, time_s: (timestamp - timestamps[0]) / 1000, sira_no: index + 1, zaman: new Date(timestamp).toLocaleString("tr-TR") };
+    let total = 0; let expected = 0; let complete = true;
+    matching.forEach(({ unit, record: item }) => {
+      const source = closest(item.rows, timestamp);
+      const active = source?.active_power_mw;
+      const baseline = baselines.get(unit.unitId);
+      const rpmax = Number(unit.rpmaxMw || metadata.RPMAX_MW);
+      const reference = source?.active_power_reference_mw;
+      const pset = Number(item.sourceMetadata.PSET_MW ?? (item.step.id.includes("MAX") ? metadata.PSET_MAX_MW : metadata.PSET_MIN_MW));
+      const expectedUnit = Number.isFinite(reference) ? reference : (Number.isFinite(pset) ? pset + (item.step.id.includes("NEG200") ? 1 : item.step.id.includes("POS200") ? -1 : 0) * (Number.isFinite(rpmax) ? rpmax : 0) : Number.NaN);
+      row[unit.unitId] = active;
+      row[`normalized_${unit.unitId}`] = Number.isFinite(active) && Number.isFinite(baseline) && Number.isFinite(rpmax) && rpmax > 0 ? (active - baseline) / rpmax : Number.NaN;
+      if (Number.isFinite(active) && Number.isFinite(expectedUnit)) { total += active; expected += expectedUnit; } else complete = false;
+    });
+    row.plant_total_active_power_mw = complete ? total : Number.NaN;
+    row.expected_active_power_mw = complete ? expected : Number.NaN;
+    if (!complete) gaps += 1;
     return row;
   });
   const seriesSets = scope === "comparison"
-    ? [{ title: "Ünite Aktif Güç Karşılaştırması", series: matching.map((item) => [item.sourceMetadata.UNIT_ID, `${item.sourceMetadata.UNIT_ID} Aktif Güç`, "left", "MW"]) }]
+    ? [{ title: "Ünite Aktif Güç Karşılaştırması", series: matching.map(({ unit }) => [unit.unitId, `${unit.unitId} Aktif Güç`, "left", "MW"]) }, { title: "Normalize PFK Cevabı — Ri(t) = ΔPi(t) / RPmax_i", series: matching.map(({ unit }) => [`normalized_${unit.unitId}`, `${unit.unitId} Ri(t)`, "left", "pu"]) }]
     : [{ title: "Santral Toplam P / Beklenen P", series: [["plant_total_active_power_mw", "Tesis Toplam P", "left", "MW"], ["expected_active_power_mw", "Beklenen P", "left", "MW"]] }];
-  return { ...record, name: `${record.step.name} — ${scope === "comparison" ? "Ünite karşılaştırması" : "Santral toplamı"}`, rows, seriesSets };
+  return { ...record, name: `${record.step.name} — ${scope === "comparison" ? "Ünite karşılaştırması" : "Santral toplamı"}`, rows, seriesSets, dataQualityWarning: gaps ? `${gaps} zaman damgasında ünite verisi tolerans içinde hizalanamadı; bu noktalar toplamdan dışlandı.` : "" };
 }
 
 function renderCharts() {
@@ -463,6 +524,7 @@ function renderCharts() {
   }
   const chartRecord = campaignChartRecord(record);
   chartManager.render(elements.chartArea, chartRecord, state.service, `${modeKey(state.service, state.plant)}:${state.pfkChartScopeByMode.get(modeKey(state.service, state.plant)) ?? "unit"}`);
+  if (chartRecord.dataQualityWarning) elements.chartArea.prepend(element("div", { className: "warning-note", text: chartRecord.dataQualityWarning }));
 }
 
 function renderReportTypes() {
@@ -531,6 +593,72 @@ function renderCriteria() {
   }
 }
 
+function settingControl(label, value, type, onInput) {
+  const group = element("div", { className: "field-group" });
+  const fieldLabel = element("label", { text: label });
+  const control = document.createElement(type === "textarea" ? "textarea" : "input");
+  if (type === "checkbox") {
+    control.type = "checkbox";
+    control.checked = Boolean(value);
+    group.classList.add("settings-check");
+    control.addEventListener("change", () => onInput(control.checked));
+  } else {
+    if (type !== "textarea") control.type = type;
+    control.value = String(value ?? "");
+    if (type === "textarea") control.rows = 3;
+    if (type === "number") { control.step = "0.01"; control.min = "0"; control.max = "1"; }
+    control.addEventListener("input", () => onInput(control.value));
+  }
+  fieldLabel.htmlFor = control.id || "";
+  group.append(fieldLabel, control);
+  return group;
+}
+
+function updateSettings(values) {
+  patchDocumentSettings(state, values);
+  clearTimeout(settingsPreviewTimer);
+  settingsPreviewTimer = setTimeout(() => {
+    if (state.reportModel) previewReport(true);
+  }, 220);
+}
+
+function renderSettings() {
+  if (!elements.settingsContent) return;
+  const settings = state.documentSettings;
+  const section = (title, controls) => {
+    const card = element("article", { className: "card settings-card" });
+    card.append(element("h3", { text: title }));
+    const form = element("div", { className: "form-grid settings-grid" });
+    form.append(...controls);
+    card.append(form);
+    return card;
+  };
+  const top = [
+    settingControl("Kurum adı", settings.institutionName, "text", (value) => updateSettings({ institutionName: value })),
+    settingControl("Rapor üst bilgi", settings.reportHeader, "text", (value) => updateSettings({ reportHeader: value })),
+    settingControl("Rapor alt bilgi", settings.reportFooter, "text", (value) => updateSettings({ reportFooter: value })),
+    settingControl("İl", settings.city, "text", (value) => updateSettings({ city: value })),
+    settingControl("Mevzuat referansı", settings.regulationReference, "text", (value) => updateSettings({ regulationReference: value })),
+    settingControl("Belge hazırlayan birim", settings.preparedBy, "text", (value) => updateSettings({ preparedBy: value })),
+    settingControl("Varsayılan imza rolleri (; ile ayırın)", settings.defaultSignatureRoles, "text", (value) => updateSettings({ defaultSignatureRoles: value })),
+    settingControl("TEİAŞ amblemini göster", settings.showLogo, "checkbox", (value) => updateSettings({ showLogo: value })),
+    settingControl("TEİAŞ filigranını göster", settings.showWatermark, "checkbox", (value) => updateSettings({ showWatermark: value })),
+    settingControl("Filigran şeffaflığı", settings.watermarkOpacity, "number", (value) => updateSettings({ watermarkOpacity: Number(value) }))
+  ];
+  const textLabels = {
+    reportIntroduction: "Rapor giriş metni", technicalData: "Teknik veri açıklama metni", minutesIntroduction: "Tutanak başlangıç metni",
+    operationSafety: "İşletme güvenliği beyanı", testMethod: "Test yöntemi açıklaması", testResult: "Test sonucu açıklaması",
+    copyDelivery: "Nüsha / teslim açıklaması", certificateIntroduction: "Sertifika açıklama metni", certificateResult: "Sertifika sonuç metni", draftWarning: "Taslak / imza öncesi uyarısı"
+  };
+  const texts = Object.entries(textLabels).map(([key, label]) => settingControl(label, settings.texts[key], "textarea", (value) => updateSettings({ texts: { [key]: value } })));
+  const defaultsLabels = {
+    facilityName: "Tesis adı varsayılanı", operatorName: "Şirket / işletmeci varsayılanı", city: "Şehir varsayılanı",
+    turbineGenerator: "Türbin / jeneratör açıklaması", unitOperationMode: "Ünite işletme modu", equipmentDefaults: "Test ekipmanı varsayılanları"
+  };
+  const defaults = Object.entries(defaultsLabels).map(([key, label]) => settingControl(label, settings.defaults[key], "text", (value) => updateSettings({ defaults: { [key]: value } })));
+  elements.settingsContent.replaceChildren(section("A) Kurumsal belge ayarları", top), section("B) Standart metinler", texts), section("C) Tesis / ünite varsayılan bilgileri", defaults));
+}
+
 async function reportAssets() {
   logoDataUrlPromise ??= urlToDataUrl(TEIAS_LOGO_URL);
   return { logoDataUrl: await logoDataUrlPromise };
@@ -548,8 +676,9 @@ async function buildCurrentReport() {
     reportType: elements.reportType.value,
     reportNote: elements.reportNote.value,
     records,
-    chartProvider: (record) => chartManager.renderRecordImages(record, state.service),
+    chartProvider: elements.reportType.value.includes("Sertifika") ? () => [] : (record) => chartManager.renderRecordImages(record, state.service),
     campaign: getPfkCampaign(state),
+    settings: state.documentSettings,
     ...assets
   });
   state.reportModel = model;
@@ -578,7 +707,9 @@ async function exportPfkCampaignCertificates() {
         reportType: "Test Sertifikası",
         reportNote: elements.reportNote.value,
         records,
-        chartProvider: (record) => chartManager.renderRecordImages(record, "PFK"),
+        chartProvider: () => [],
+        campaign: { ...campaign, units: [unit], expectedSteps: configFor("PFK", state.plant).steps.length },
+        settings: state.documentSettings,
         ...assets
       });
       const filename = `${unit.unitId}_PFK_Test_Sertifikasi.docx`;
@@ -596,15 +727,27 @@ async function exportPfkCampaignCertificates() {
   }
 }
 
+async function exportRawEvidenceManifest() {
+  try {
+    const records = recordsForMode(state);
+    if (!records.length) throw new Error("Kanıt manifesti için en az bir CSV yükleyin.");
+    const csv = rawEvidenceManifestCsv(records.map((record) => record.evidence).filter(Boolean));
+    await saveBinary(new Blob([csv], { type: "text/csv;charset=utf-8" }), `${state.service}_${state.plant}_ham_csv_kanit_manifesti.csv`, "text/csv;charset=utf-8");
+    showToast("Ham CSV SHA-256 kanıt manifesti indirildi.", "success");
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
 async function currentReport() {
   return state.reportDirty || !state.reportModel ? await buildCurrentReport() : state.reportModel;
 }
 
-async function previewReport() {
+async function previewReport(quiet = false) {
   try {
     const model = await buildCurrentReport();
     elements.reportPaper.innerHTML = renderReportPreview(model);
-    showToast("Rapor önizlemesi oluşturuldu.", "success");
+    if (!quiet) showToast("Rapor önizlemesi oluşturuldu.", "success");
   } catch (error) {
     showToast(error.message, "error");
   }
@@ -640,6 +783,7 @@ function renderWorkspace() {
   renderReportTypes();
   if (state.activeTab === "chartsPanel") renderCharts();
   if (state.activeTab === "criteriaPanel") renderCriteria();
+  if (state.activeTab === "settingsPanel") renderSettings();
 }
 
 function bindEvents() {
@@ -673,6 +817,7 @@ function bindEvents() {
   elements.pdfReport.addEventListener("click", () => exportReport("pdf"));
   elements.docxReport.addEventListener("click", () => exportReport("docx"));
   elements.pfkCampaignCertificates.addEventListener("click", exportPfkCampaignCertificates);
+  elements.rawEvidenceManifest.addEventListener("click", exportRawEvidenceManifest);
   elements.printReport.addEventListener("click", async () => {
     if (state.reportDirty || !state.reportModel) await previewReport();
     setActiveTab("reportsPanel");
@@ -680,6 +825,12 @@ function bindEvents() {
   });
   elements.reportType.addEventListener("change", () => { state.reportDirty = true; });
   elements.reportNote.addEventListener("input", () => { state.reportDirty = true; });
+  elements.resetSettings.addEventListener("click", () => {
+    resetDocumentSettings(state);
+    renderSettings();
+    if (state.reportModel) previewReport(true);
+    showToast("Belge ayarları varsayılan değerlere döndürüldü.", "success");
+  });
   elements.sideToggle.addEventListener("click", () => {
     if (window.matchMedia("(max-width: 620px)").matches) document.body.classList.toggle("mobile-menu-open");
     else document.body.classList.toggle("sidebar-collapsed");
@@ -690,7 +841,7 @@ function cacheElements() {
   [
     "sidebar", "crumb", "workTitle", "modeTag", "metaForm", "pfkCampaignCard", "pfkCampaignSetup", "pfkCampaignZip", "pfkCampaignForm", "bulkFiles", "nativeBulkOpen", "downloadAllTemplates", "bulkSummary", "stepList",
     "graphStep", "graphInfo", "chartArea", "reportType", "reportNote", "makeReport", "pdfReport", "docxReport", "printReport",
-    "reportPaper", "criteriaContent", "toastRegion", "sideToggle", "teiasLogo", "runtimeBadge", "pfkChartScope", "pfkCampaignCertificates"
+    "reportPaper", "criteriaContent", "toastRegion", "sideToggle", "teiasLogo", "runtimeBadge", "pfkChartScope", "pfkCampaignCertificates", "rawEvidenceManifest", "settingsContent", "resetSettings"
   ].forEach((id) => { elements[id] = byId(id); });
 }
 

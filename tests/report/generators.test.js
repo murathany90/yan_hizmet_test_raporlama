@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONFIGS } from "../../src/app/config.js";
+import { CONFIGS } from "../../src/app/config-v062.js";
 import { buildReportModel } from "../../src/report/model.js";
 import { createPdfBuffer } from "../../src/report/pdf.js";
 import { createDocxBuffer } from "../../src/report/docx.js";
@@ -17,7 +17,7 @@ function fixtureModel() {
     records: [{
       name: "örnek.csv",
       step,
-      rows: [{ time_s: 0, active_power_mw: 100 }],
+      rows: [{ zaman: "12.3.2026 11:09:19,1s", sira_no: 1, timestamp_ms: 1773302959100, time_s: 0, active_power_mw: 100 }],
       analysis: { status: "GEÇTİ", detail: "Başarılı", metrics: { t50Seconds: 12.5 } },
       validation: { warnings: [] }
     }],
@@ -49,7 +49,7 @@ describe("report generators", () => {
     const model = buildReportModel({
       service: "PFK", plant: "HES", config, metadata: { PLANT_TOTAL_INSTALLED_MW: "100" }, reportType: "Performans Test Raporu", reportNote: "", chartProvider: () => [],
       campaign: { enabled: true, campaignId: "C1", facilityId: "F1", eventId: "E1", runId: "R1", units: [{ unitId: "U1", unitName: "Ünite 1" }, { unitId: "U2", unitName: "Ünite 2" }] },
-      records: [{ name: "u1.csv", step: config.steps[0], rows: [{ time_s: 0, active_power_mw: 50 }], sourceMetadata: { CAMPAIGN_ID: "C1", UNIT_ID: "U1", UNIT_NAME: "Ünite 1", RUN_ID: "R1" }, analysis: { status: "GEÇTİ", detail: "ok", metrics: {} }, validation: { warnings: [] } }]
+      records: [{ name: "u1.csv", step: config.steps[0], rows: [{ zaman: "12.3.2026 11:09:19,1s", sira_no: 1, timestamp_ms: 1773302959100, time_s: 0, active_power_mw: 50 }], sourceMetadata: { CAMPAIGN_ID: "C1", UNIT_ID: "U1", UNIT_NAME: "Ünite 1", RUN_ID: "R1" }, analysis: { status: "GEÇTİ", detail: "ok", metrics: {} }, validation: { warnings: [] } }]
     });
     expect(model.campaignSummary.units).toHaveLength(2);
     expect(model.officialStatus).toBe("İNCELEME GEREKLİ");

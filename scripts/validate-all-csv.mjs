@@ -3,6 +3,7 @@ import { basename, extname, relative, resolve, sep } from "node:path";
 import { hasUtf8Bom, parseCsv } from "../src/csv/parser.js";
 import { resolveCsvRoute } from "../src/csv/metadata.js";
 import { validateParsedCsv } from "../src/csv/validator.js";
+import { CONFIGS } from "../src/app/config-v062.js";
 
 const root = resolve(import.meta.dirname, "..");
 const templateRoot = resolve(root, "CSV_Sablonlari");
@@ -20,7 +21,7 @@ function csvFiles(directory) {
 
 function pathRoute(path, base) {
   const parts = relative(base, path).split(sep);
-  return { service: parts[0]?.toUpperCase(), plant: parts[1]?.toUpperCase() };
+  return { service: parts[0]?.toUpperCase(), plant: parts[1]?.toUpperCase() === "HES_MULTI_UNIT" ? "HES" : parts[1]?.toUpperCase() };
 }
 
 function inspect(path, base, template) {
@@ -36,6 +37,9 @@ function inspect(path, base, template) {
     errors.push(error.message);
     return { path, ok: false, errors, warnings: [] };
   }
+  if (template || parsed.rows.length) {
+    if (!parsed.headers.includes("zaman") || !parsed.headers.includes("sira_no")) errors.push("ZAMAN/SIRA_NO sütunları eksik");
+  }
   const expected = pathRoute(path, base);
   if (route.service !== expected.service || route.plant !== expected.plant) {
     errors.push(`dizin rotası ${expected.service}/${expected.plant}, metadata rotası ${route.service}/${route.plant}`);
@@ -50,7 +54,7 @@ function inspect(path, base, template) {
 }
 
 const templateFiles = csvFiles(templateRoot);
-const exampleFiles = csvFiles(exampleRoot).filter((path) => basename(path) !== "ORNEK_VERI_MANIFESTOSU.csv");
+const exampleFiles = csvFiles(exampleRoot).filter((path) => !["ORNEK_VERI_MANIFESTOSU.csv", "campaign.csv", "manifest.csv"].includes(basename(path)));
 const templates = templateFiles.map((path) => inspect(path, templateRoot, true));
 const examples = exampleFiles.map((path) => inspect(path, exampleRoot, false));
 const failures = [...templates, ...examples].filter((result) => !result.ok);
@@ -58,7 +62,9 @@ const warnings = examples.flatMap((result) => result.warnings.map((warning) => `
 
 console.log(`CSV templates: ${templates.filter((item) => item.ok).length}/${templateFiles.length} PASS`);
 console.log(`Example CSV: ${examples.filter((item) => item.ok).length}/${exampleFiles.length} PASS`);
-console.log(`Expected inventory: templates=${templateFiles.length === 87 ? "87/87" : templateFiles.length}, examples=${exampleFiles.length === 87 ? "87/87" : exampleFiles.length}`);
+const expectedTemplates = Object.values(CONFIGS).reduce((total, config) => total + config.steps.length, 0);
+const expectedExamples = expectedTemplates + CONFIGS["PFK:HES"].steps.length * 2;
+console.log(`Expected inventory: templates=${templateFiles.length}/${expectedTemplates}, examples=${exampleFiles.length}/${expectedExamples}`);
 if (warnings.length) {
   console.log(`Warnings (${warnings.length}):`);
   warnings.forEach((warning) => console.log(`- ${warning}`));
@@ -67,4 +73,4 @@ if (failures.length) {
   console.error(`Failures (${failures.length}):`);
   for (const failure of failures) console.error(`- ${relative(root, failure.path)}: ${failure.errors.join("; ")}`);
 }
-if (templateFiles.length !== 87 || exampleFiles.length !== 87 || failures.length) process.exitCode = 1;
+if (templateFiles.length !== expectedTemplates || exampleFiles.length !== expectedExamples || failures.length) process.exitCode = 1;

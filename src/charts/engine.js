@@ -38,10 +38,30 @@ function formatAxis(value) {
   return value.toFixed(2);
 }
 
+function usesRealTime(rows) { return rows.some((row) => Number.isFinite(row.timestamp_ms)); }
+function xValue(row) { return Number.isFinite(row.timestamp_ms) ? row.timestamp_ms : row.time_s; }
+function xKey(rows) { return usesRealTime(rows) ? "timestamp_ms" : "time_s"; }
+function formatTimeAxis(value, span, realTime) {
+  if (!realTime) return formatAxis(value);
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return "—";
+  const showDate = span >= 20 * 60 * 60 * 1000;
+  const showMs = span <= 15 * 60 * 1000;
+  const time = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}${showMs ? `.${String(date.getMilliseconds()).padStart(3, "0")}` : ""}`;
+  return showDate ? `${String(date.getDate()).padStart(2, "0")}.${String(date.getMonth() + 1).padStart(2, "0")} ${time}` : time;
+}
+function dateInputValue(value) {
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.valueOf() - offset).toISOString().slice(0, 23);
+}
+
 function fullTimeExtent(rows) {
   if (!rows.length) return [0, 1];
-  const minimum = rows.find((row) => Number.isFinite(row.time_s))?.time_s ?? 0;
-  const maximum = [...rows].reverse().find((row) => Number.isFinite(row.time_s))?.time_s ?? minimum + 1;
+  const minimumRow = rows.find((row) => Number.isFinite(xValue(row)));
+  const minimum = minimumRow ? xValue(minimumRow) : 0;
+  const maximumRow = [...rows].reverse().find((row) => Number.isFinite(xValue(row)));
+  const maximum = maximumRow ? xValue(maximumRow) : minimum + 1;
   return minimum === maximum ? [minimum, minimum + 1] : [minimum, maximum];
 }
 
@@ -62,7 +82,7 @@ function viewFor(state, viewKey, rows) {
 }
 
 function dataForView(rows, series, view, maxPoints) {
-  const visible = visibleSlice(rows, view.minimum, view.maximum);
+  const visible = visibleSlice(rows, view.minimum, view.maximum, xKey(rows));
   return minMaxDownsample(visible, series.map((item) => item.key), maxPoints);
 }
 
@@ -80,6 +100,7 @@ export function drawChart(canvas, rows, series, view, options = {}) {
   context.fillRect(0, 0, width, height);
 
   const data = dataForView(rows, series, view, options.maxPoints ?? 4_000);
+  const realTime = usesRealTime(rows);
   if (!data.length || !series.length) {
     context.fillStyle = "#526a7a";
     context.font = `${12 * pixelRatio}px Arial`;
@@ -126,7 +147,7 @@ export function drawChart(canvas, rows, series, view, options = {}) {
     context.fillStyle = "#526a7a";
     context.textAlign = "center";
     context.textBaseline = "top";
-    context.fillText(formatAxis(value), position, height - marginBottom + 9 * pixelRatio);
+    context.fillText(formatTimeAxis(value, view.maximum - view.minimum, realTime), position, height - marginBottom + 9 * pixelRatio);
   }
 
   series.forEach((item, index) => {
@@ -137,10 +158,10 @@ export function drawChart(canvas, rows, series, view, options = {}) {
     context.beginPath();
     let started = false;
     for (const row of data) {
-      const xValue = row.time_s;
+      const rowX = xValue(row);
       const yValue = row[item.key];
-      if (!Number.isFinite(xValue) || !Number.isFinite(yValue)) continue;
-      const px = x(xValue);
+      if (!Number.isFinite(rowX) || !Number.isFinite(yValue)) { started = false; continue; }
+      const px = x(rowX);
       const py = (item.axis === "right" ? yRight : yLeft)(yValue);
       if (!started) {
         context.moveTo(px, py);
@@ -155,7 +176,7 @@ export function drawChart(canvas, rows, series, view, options = {}) {
   context.font = `${10 * pixelRatio}px Arial`;
   context.textAlign = "center";
   context.textBaseline = "bottom";
-  context.fillText("Zaman [s]", marginLeft + plotWidth / 2, height - 2 * pixelRatio);
+  context.fillText(realTime ? "Gerçek zaman" : "Zaman [s]", marginLeft + plotWidth / 2, height - 2 * pixelRatio);
   context.save();
   context.translate(12 * pixelRatio, marginTop + plotHeight / 2);
   context.rotate(-Math.PI / 2);
@@ -193,12 +214,14 @@ export function chartToSvg(rows, series, view, title, width = 1200, height = 600
     const y = top + (index * plotHeight) / 5;
     return `<line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" stroke="#dce5ea"/><text x="${left - 8}" y="${y + 4}" text-anchor="end">${formatAxis(leftMax - ((leftMax - leftMin) * index) / 5)}</text>`;
   }).join("");
+  const realTime = usesRealTime(rows);
   const paths = series.map((item, index) => {
-    const points = data.filter((row) => Number.isFinite(row.time_s) && Number.isFinite(row[item.key])).map((row) => `${x(row.time_s).toFixed(2)},${(item.axis === "right" ? yRight : yLeft)(row[item.key]).toFixed(2)}`).join(" ");
+    const points = data.filter((row) => Number.isFinite(xValue(row)) && Number.isFinite(row[item.key])).map((row) => `${x(xValue(row)).toFixed(2)},${(item.axis === "right" ? yRight : yLeft)(row[item.key]).toFixed(2)}`).join(" ");
     return `<polyline points="${points}" fill="none" stroke="${COLORS[index % COLORS.length]}" stroke-width="2"/>`;
   }).join("");
   const legend = series.map((item, index) => `<text x="${left + index * 190}" y="${height - 14}" fill="${COLORS[index % COLORS.length]}">${svgEscape(item.label)} [${svgEscape(item.unit)}]</text>`).join("");
-  return `<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#fff"/><g font-family="Arial" font-size="12" fill="#526a7a"><text x="${width / 2}" y="24" text-anchor="middle" font-size="16" font-weight="700" fill="#244b64">${svgEscape(title)}</text>${grid}${paths}<text x="${left + plotWidth / 2}" y="${height - 36}" text-anchor="middle">Zaman [s]</text>${legend}</g></svg>`;
+  const labels = Array.from({ length: 6 }, (_, index) => `<text x="${x(view.minimum + ((view.maximum - view.minimum) * index) / 5)}" y="${height - 42}" text-anchor="middle">${svgEscape(formatTimeAxis(view.minimum + ((view.maximum - view.minimum) * index) / 5, view.maximum - view.minimum, realTime))}</text>`).join("");
+  return `<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#fff"/><g font-family="Arial" font-size="12" fill="#526a7a"><text x="${width / 2}" y="24" text-anchor="middle" font-size="16" font-weight="700" fill="#244b64">${svgEscape(title)}</text>${grid}${paths}${labels}<text x="${left + plotWidth / 2}" y="${height - 18}" text-anchor="middle">${realTime ? "Gerçek zaman" : "Zaman [s]"}</text>${legend}</g></svg>`;
 }
 
 function button(label, action, title = label) {
@@ -240,8 +263,9 @@ export class ChartManager {
       const entry = this.registry.get(viewKey);
       if (!entry || !entry.details.open) return;
       drawChart(entry.canvas, entry.record.rows, this.visibleSeries(viewKey, entry.series), viewFor(this.state, viewKey, entry.record.rows));
-      entry.minimumInput.value = String(this.state.chartViews.get(viewKey).minimum);
-      entry.maximumInput.value = String(this.state.chartViews.get(viewKey).maximum);
+      const view = this.state.chartViews.get(viewKey);
+      entry.minimumInput.value = entry.realTime ? dateInputValue(view.minimum) : String(view.minimum);
+      entry.maximumInput.value = entry.realTime ? dateInputValue(view.maximum) : String(view.maximum);
     }));
   }
 
@@ -258,6 +282,7 @@ export class ChartManager {
       const viewKey = `${modeKey}:${record.step.id}:${index}`;
       const series = normalizeSeries(set.series);
       const view = viewFor(this.state, viewKey, record.rows);
+      const realTime = usesRealTime(record.rows);
       if (!this.state.chartOpenState.has(viewKey)) this.state.chartOpenState.set(viewKey, true);
 
       const details = document.createElement("details");
@@ -273,19 +298,19 @@ export class ChartManager {
       const range = document.createElement("div");
       range.className = "chart-range";
       const minimumInput = document.createElement("input");
-      minimumInput.type = "number";
-      minimumInput.step = "any";
-      minimumInput.value = String(view.minimum);
-      minimumInput.setAttribute("aria-label", "Başlangıç zamanı saniye");
+      minimumInput.type = realTime ? "datetime-local" : "number";
+      minimumInput.step = realTime ? "0.001" : "any";
+      minimumInput.value = realTime ? dateInputValue(view.minimum) : String(view.minimum);
+      minimumInput.setAttribute("aria-label", realTime ? "Başlangıç gerçek zamanı" : "Başlangıç zamanı saniye");
       const separator = document.createElement("span");
-      separator.textContent = "s —";
+      separator.textContent = realTime ? "—" : "s —";
       const maximumInput = document.createElement("input");
-      maximumInput.type = "number";
-      maximumInput.step = "any";
-      maximumInput.value = String(view.maximum);
-      maximumInput.setAttribute("aria-label", "Bitiş zamanı saniye");
+      maximumInput.type = realTime ? "datetime-local" : "number";
+      maximumInput.step = realTime ? "0.001" : "any";
+      maximumInput.value = realTime ? dateInputValue(view.maximum) : String(view.maximum);
+      maximumInput.setAttribute("aria-label", realTime ? "Bitiş gerçek zamanı" : "Bitiş zamanı saniye");
       const unit = document.createElement("span");
-      unit.textContent = "s";
+      unit.textContent = realTime ? "" : "s";
       range.append(minimumInput, separator, maximumInput, unit, button("Uygula", "apply-range", "Girilen zaman aralığını uygula"));
       toolbar.append(range);
       const canvas = document.createElement("canvas");
@@ -293,6 +318,9 @@ export class ChartManager {
       canvas.dataset.viewKey = viewKey;
       canvas.setAttribute("role", "img");
       canvas.setAttribute("aria-label", `${set.title} zaman serisi grafiği`);
+      const tooltip = document.createElement("div");
+      tooltip.className = "chart-tooltip";
+      tooltip.hidden = true;
       const legend = document.createElement("div");
       legend.className = "legend";
       series.forEach((item, seriesIndex) => {
@@ -315,11 +343,11 @@ export class ChartManager {
         });
         legend.append(legendItem);
       });
-      inner.append(toolbar, canvas, legend);
+      inner.append(toolbar, canvas, tooltip, legend);
       details.append(summary, inner);
       container.append(details);
 
-      const registryEntry = { details, canvas, record, series, title: set.title, minimumInput, maximumInput };
+      const registryEntry = { details, canvas, record, series, title: set.title, minimumInput, maximumInput, realTime };
       this.registry.set(viewKey, registryEntry);
       this.resizeObserver.observe(inner);
       details.addEventListener("toggle", () => {
@@ -339,8 +367,8 @@ export class ChartManager {
           currentView.maximum = currentView.fullMax;
           this.scheduleDraw(viewKey);
         } else if (action === "apply-range") {
-          const minimum = Number(minimumInput.value);
-          const maximum = Number(maximumInput.value);
+          const minimum = realTime ? new Date(minimumInput.value).valueOf() : Number(minimumInput.value);
+          const maximum = realTime ? new Date(maximumInput.value).valueOf() : Number(maximumInput.value);
           if (Number.isFinite(minimum) && Number.isFinite(maximum) && maximum > minimum) {
             currentView.minimum = Math.max(currentView.fullMin, minimum);
             currentView.maximum = Math.min(currentView.fullMax, maximum);
@@ -361,6 +389,22 @@ export class ChartManager {
         this.adjustView(viewFor(this.state, viewKey, record.rows), event.deltaY < 0 ? 0.65 : 1.55, ratio);
         this.scheduleDraw(viewKey);
       }, { passive: false });
+
+      canvas.addEventListener("pointermove", (event) => {
+        const rectangle = canvas.getBoundingClientRect();
+        const currentView = viewFor(this.state, viewKey, record.rows);
+        const target = currentView.minimum + ((event.clientX - rectangle.left) / rectangle.width) * (currentView.maximum - currentView.minimum);
+        let nearest = null;
+        for (const row of record.rows) {
+          if (!Number.isFinite(xValue(row))) continue;
+          if (!nearest || Math.abs(xValue(row) - target) < Math.abs(xValue(nearest) - target)) nearest = row;
+        }
+        if (!nearest) return;
+        const values = this.visibleSeries(viewKey, series).filter((item) => Number.isFinite(nearest[item.key])).map((item) => `${item.label}: ${formatAxis(nearest[item.key])} ${item.unit}`);
+        tooltip.textContent = `Zaman: ${nearest.zaman || formatTimeAxis(xValue(nearest), currentView.maximum - currentView.minimum, realTime)}\nSıra No: ${nearest.sira_no ?? "—"}${values.length ? `\n${values.join("\n")}` : ""}`;
+        tooltip.hidden = false;
+      });
+      canvas.addEventListener("pointerleave", () => { tooltip.hidden = true; });
 
       let dragging = false;
       let startX = 0;

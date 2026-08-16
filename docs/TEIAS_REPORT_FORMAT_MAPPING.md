@@ -20,7 +20,7 @@ Bu belge, `docs/test_dosyaları` içindeki korunan örnek/formatlardan çıkarı
 | B) Teknik veriler | `technicalData` | Ünite/güç bilgisi, governor ayarları, test ekipmanı, kanallar, ölçekler, simüle edilen frekans ve çalışma ayarları. |
 | C) Maksimum çıkış gücü rezerv testleri | `records: RES_MAX_* / BESS_MAX_*` | Her adım için Δtd, t50, t100, TRP-A/B/C, örnekleme ve süre. |
 | D) Minimum çıkış gücü rezerv testleri | `records: RES_MIN_* / BESS_MIN_*` | Her adım için aynı KPI'lar; adım kimliği ayrı satırda tutulur. |
-| E) Hassasiyet testi | `records: *SENS*` | Simüle frekans ve aktif güç tepkisi. |
+| E) Hassasiyet testi | `records: HASSASIYET` | Dört frekans segmenti, tek sürekli `ZAMAN;SIRA_NO` CSV kaydında; simüle frekans ve aktif güç tepkisi birlikte değerlendirilir. |
 | F) Doğrulama testleri | `records: *VALIDATION*` | Gerçek şebeke frekansı, süre ve veri bütünlüğü. |
 | G) Sonuç | `summary` | Adım bazlı durum, eksik kayıt, resmî statü ve imza öncesi kontrol. |
 | Tutanak / sertifika | `reportType` şablonu | Katılımcı, ekipman/kalibrasyon, sonuç matrisi ve imza alanları; sertifika resmî imza yerine geçmez. |
@@ -31,7 +31,7 @@ PFK dışındaki hiçbir hizmette uygulanmaz. CSV kimliği:
 
 `CAMPAIGN_ID`, `FACILITY_ID`, `TEST_SCOPE`, `ENTITY_TYPE`, `ENTITY_ID`, `UNIT_ID`, `UNIT_NAME`, `UNIT_COUNT`, `STEP_ID`, `EVENT_ID`, `RUN_ID`.
 
-Kayıt rotası `campaign + service + plant + unit + step + run` bağlamını taşır. Kampanya raporu C/D/E/F altında üniteleri ayrı verir; ayrıca ünite özeti ve tesis toplamı / beklenen P karşılaştırması bulunur. ZIP yapısı `campaign.csv`, `manifest.csv`, `U1/...`, `U2/...` ve kanıt manifesti (dosya adı, SHA-256, ünite, adım) içerir.
+Kayıt rotası `campaign + service + plant + unit + step + run` bağlamını taşır. Her ünite için `Pnom`, `RPmax` ve “teste dahil” alanı tutulur. Kampanya raporu C/D/E/F altında üniteleri ayrı verir; tesis toplamı yalnız ortak zaman damgasında/örnekleme toleransında eşleşen noktalarla hesaplanır ve beklenen P, referans kanalı veya `Pset ± RPmax` üzerinden gelir. ZIP yapısı `campaign.csv`, `manifest.csv`, `U1/...`, `U2/...` ve kanıt manifesti (dosya adı, SHA-256, ünite, adım) içerir.
 
 ## RGDH — C1 ve C2 ayrımı
 
@@ -56,3 +56,4 @@ RGDH kapasite sonucu `Yüklendi` değildir: her adım için Q hedefi, kuyruk ort
 - Format kaynak görseli nihai rapora eklenmez; yalnız geliştirme/önizleme bağlamında kullanılabilir.
 - Kısa ya da boş bir bölüm yeni sayfaya zorlanmaz; uzun test/grafik blokları sayfa bütünlüğü korunarak bölünür.
 - Değişken tabloları altı sütun taşır: değişken, açıklama, değer, birim, kaynak, CSV/metadata alanı.
+- Sertifika, grafik taşımayan iki A4 sayfadır: ilk sayfa tesis/cihaz bilgileri, ikinci sayfa sonuç tablosu ve imza alanlarıdır. Kanıt özeti elektronik imza değildir.

@@ -1,5 +1,6 @@
 import { strToU8, zipSync } from "fflate";
 import { makeCsvTemplate } from "./parser.js";
+import { sha256Hex } from "./evidence.js";
 
 function metadataForStep(service, plant, metadata, step, campaign = null, unit = null) {
   const result = {
@@ -32,12 +33,6 @@ function csvBytes(text) {
 
 function plainCsv(headers, rows) {
   return `\uFEFF${headers.join(";")}\r\n${rows.map((row) => row.map((cell) => String(cell ?? "").replaceAll(";", ",")).join(";")).join("\r\n")}\r\n`;
-}
-
-async function sha256Hex(bytes) {
-  if (!globalThis.crypto?.subtle) return "NOT_AVAILABLE";
-  const hash = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export function allTemplatesZip({ service, plant, config, metadata }) {

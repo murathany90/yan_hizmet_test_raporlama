@@ -1,130 +1,107 @@
 async function loadPdfMake() {
-  const [pdfMakeModule, fontModule] = await Promise.all([
-    import("pdfmake/build/pdfmake.js"),
-    import("pdfmake/build/vfs_fonts.js")
-  ]);
+  const [pdfMakeModule, fontModule] = await Promise.all([import("pdfmake/build/pdfmake.js"), import("pdfmake/build/vfs_fonts.js")]);
   const pdfMake = pdfMakeModule.default ?? pdfMakeModule;
   const fonts = fontModule.default ?? fontModule;
   pdfMake.vfs = fonts.pdfMake?.vfs ?? fonts.vfs ?? fonts;
   return pdfMake;
 }
 
-function summaryTable(records) {
-  return {
-    table: {
-      headerRows: 1,
-      widths: ["*", 92, 76, "*"],
-      body: [["Test Adımı", "CSV", "Durum", "Hesap / Not"], ...(records.length ? records.map((record) => [record.name, record.filename, record.status, record.detail]) : [["Bu bölüm için yüklenmiş kayıt yok", "—", "EKSİK", "—"]])]
-    },
-    layout: "lightHorizontalLines",
-    fontSize: 7.5,
-    margin: [0, 4, 0, 8]
-  };
-}
-
-function variableTable(variables) {
-  return {
-    table: {
-      headerRows: 1,
-      widths: [62, "*", 58, 35, 84, 74],
-      body: [["Değişken", "Açıklama", "Değer", "Birim", "Kaynak", "CSV/Metadata Alanı"], ...variables.map((item) => [item.key, item.description, String(item.value ?? ""), item.unit, item.source, item.field])]
-    },
-    layout: "lightHorizontalLines",
-    fontSize: 6.3,
-    margin: [0, 4, 0, 8]
-  };
-}
+const table = (headers, rows, widths, fontSize = 7) => {
+  const emptyRow = () => headers.map((_, index) => index === 0 ? "Yüklenmiş kayıt yok" : "—");
+  return { table: { headerRows: 1, widths, body: [headers, ...(rows.length ? rows : [emptyRow()])] }, layout: "lightHorizontalLines", fontSize, margin: [0, 4, 0, 8] };
+};
+const selected = (model, ids = []) => model.records.filter((record) => ids.includes(record.stepId));
+const summaryTable = (records) => table(["Test adımı", "CSV", "Durum", "Hesap / not"], records.map((record) => [record.name, record.filename, record.status, record.detail]), ["*", 90, 58, "*"], 6.8);
+const evidenceTable = (model) => table(["Dosya", "SHA-256", "Ünite", "STEP_ID", "Satır", "Başlangıç", "Bitiş", "ms"], model.evidence.map((item) => [item.filename, item.sha256, item.unitId, item.stepId, String(item.rowCount), item.start, item.end, Number.isFinite(item.sampleMs) ? item.sampleMs.toFixed(3) : "—"]), [50, 105, 30, 55, 28, 75, 75, 24], 5.2);
 
 function technicalContent(model) {
-  return [
-    { text: "Test ekipmanı ve kalibrasyon", bold: true, fontSize: 8, margin: [0, 3, 0, 3] },
-    {
-      table: {
-        headerRows: 1,
-        widths: [82, "*", 88, 92, 48],
-        body: [["Amaç", "Marka / Model", "Seri / Yazılım", "Kalibrasyon", "Doğruluk"], ...model.technicalData.equipment.map((item) => [item.purpose, item.brandModel, item.serialNo, item.calibration, item.accuracy])]
-      },
-      layout: "lightHorizontalLines", fontSize: 7, margin: [0, 0, 0, 7]
-    },
-    { text: "Kanal, ölçek ve kaynak bilgileri", bold: true, fontSize: 8, margin: [0, 3, 0, 3] },
-    variableTable(model.technicalData.channels.map((item) => ({ key: item.channel, description: item.signal, value: item.scale, unit: item.unit, source: item.source, field: item.field })))
-  ];
+  const equipment = table(["Cihaz türü", "Marka", "Model", "Seri no", "Yazılım", "Doğruluk", "Kal. no", "Kal. tarihi"], model.technicalData.equipment.map((item) => [item.deviceType, item.brand, item.model, item.serialNo, item.software, item.accuracyClass, item.calibrationNo, item.calibrationDate]), [62, 48, 58, 52, 55, 44, 52, 54], 5.9);
+  const channels = table(["Sinyal adı", "Bağlantı noktası", "Ölçme aralığı", "Tip", "m", "b", "Birim"], model.technicalData.channels.map((item) => [item.signal, item.connectionPoint, item.measurementRange, item.signalType, item.scaleM, item.scaleB, item.unit]), [95, 120, 85, 52, 34, 34, 45], 6.1);
+  return [{ text: model.documentText.technicalData, fontSize: 8, margin: [0, 0, 0, 5] }, { text: "Ölçüm ekipmanı ve kalibrasyon", bold: true, fontSize: 8 }, equipment, { text: "Kanal tanımları", bold: true, fontSize: 8 }, channels];
+}
+
+function recordContent(records, charts = true) {
+  const content = [summaryTable(records)];
+  if (charts) records.forEach((record) => record.charts.forEach((chart) => content.push({ text: `${record.name} — ${chart.title}`, bold: true, fontSize: 7.5, margin: [0, 5, 0, 2] }, { image: chart.dataUrl, fit: [510, 185], alignment: "center", margin: [0, 0, 0, 7] })));
+  return content;
+}
+
+function groupedContent(model, section) {
+  return section.groups.flatMap((group) => {
+    const items = group.items ?? [group];
+    return [{ text: group.heading, style: "subHeading" }, ...items.flatMap((item) => [group.items ? { text: item.heading, bold: true, fontSize: 8, margin: [0, 5, 0, 1] } : null, ...recordContent(selected(model, item.stepIds))].filter(Boolean))];
+  });
 }
 
 function campaignContent(summary) {
   if (!summary) return [];
-  return [
-    { text: `Kampanya: ${summary.campaignId} · ${summary.facilityId} · ${summary.units.length} ünite`, fontSize: 8, margin: [0, 2, 0, 4] },
-    {
-      table: {
-        headerRows: 1,
-        widths: ["*", 74, 68, 86],
-        body: [["Ünite", "Yüklenen / Beklenen", "Son P [MW]", "Durum"], ...summary.units.map((unit) => [`${unit.unitId} — ${unit.unitName}`, `${unit.loadedSteps} / ${unit.expectedSteps}`, Number.isFinite(unit.activePowerMw) ? unit.activePowerMw.toFixed(2) : "—", unit.status])]
-      },
-      layout: "lightHorizontalLines", fontSize: 7.5, margin: [0, 0, 0, 5]
-    },
-    { text: `Tesis toplamı P: ${Number.isFinite(summary.totalActivePowerMw) ? summary.totalActivePowerMw.toFixed(2) : "—"} MW | Beklenen P: ${Number.isFinite(summary.expectedPowerMw) ? summary.expectedPowerMw.toFixed(2) : "—"} MW | Fark: ${Number.isFinite(summary.expectedPowerDifferenceMw) ? summary.expectedPowerDifferenceMw.toFixed(2) : "—"} MW`, fontSize: 7.5 }
+  return [table(["Ünite", "Pnom", "RPmax", "Yüklenen / beklenen", "Son P", "Beklenen P", "Durum"], summary.units.map((unit) => [`${unit.unitId} — ${unit.unitName}`, unit.pnomMw, unit.rpmaxMw, `${unit.loadedSteps} / ${unit.expectedSteps}`, Number.isFinite(unit.activePowerMw) ? unit.activePowerMw.toFixed(3) : "—", Number.isFinite(unit.expectedPowerMw) ? unit.expectedPowerMw.toFixed(3) : "—", unit.status]), ["*", 40, 40, 66, 52, 62, 62], 6.5), { text: `Santral toplam P: ${summary.totalActivePowerMw.toFixed(3)} MW | Beklenen P: ${summary.expectedPowerMw.toFixed(3)} MW | Fark: ${summary.expectedPowerDifferenceMw.toFixed(3)} MW`, fontSize: 7.5 }];
+}
+
+function minutesContent(model) {
+  return [model.documentText.minutesIntroduction, model.documentText.operationSafety, model.documentText.testMethod].map((text) => ({ text, fontSize: 8.5, lineHeight: 1.25, margin: [0, 0, 0, 7] })).concat([table(["Santral / ünite detayı", "Değer"], [["Türbin / jeneratör", model.metadata.TURBINE_GENERATOR_DESCRIPTION || "—"], ["Nominal güç", `${model.metadata.PNOM_MW || "—"} MW`], ["Frekans simülasyonu", model.metadata.SIGNAL_GENERATOR || "—"], ["İşletme modu", model.metadata.UNIT_OPERATION_MODE || model.metadata.PFK_OPERATION_MODE || "—"]], [145, "*"], 7.4)]);
+}
+
+function certificateContent(model) {
+  const reserve = model.records.filter((record) => record.stepId.includes("NEG200") || record.stepId.includes("POS200"));
+  const device = model.technicalData.equipment[0] ?? {};
+  const pageOne = [
+    ...(model.assets.logoDataUrl ? [{ image: model.assets.logoDataUrl, fit: [70, 94], alignment: "center", margin: [0, 22, 0, 12] }] : []),
+    { text: `Sertifika No: ${model.metadata.REPORT_NO || "—"}`, alignment: "right", fontSize: 9 },
+    { text: model.title, alignment: "center", bold: true, color: "#063f68", fontSize: 16, margin: [20, 8, 20, 14] },
+    { text: model.documentText.certificateIntroduction, alignment: "justify", fontSize: 9, lineHeight: 1.25, margin: [0, 0, 0, 12] },
+    table(["Tesis", "Ünite", "Test tarih aralığı", "Belge durumu"], [[model.metadata.TESIS_ADI || "—", model.metadata.UNIT_ID || "Tesis kapsamı", model.metadata.TEST_DATE || "—", model.officialStatus]], ["*", 95, 105, 90], 7.1),
+    { text: "Test cihazı bilgileri", bold: true, fontSize: 9 },
+    table(["Marka", "Model", "Seri no", "Kalibrasyon"], [[device.brand || "—", device.model || "—", device.serialNo || "—", `${device.calibrationNo || "—"} / ${device.calibrationDate || "—"}`]], ["*", "*", 100, 130], 7.2),
+    { text: model.documentText.draftWarning || "İMZA ÖNCESİ / TASLAK", bold: true, alignment: "center", color: "#8a5700", margin: [0, 22, 0, 0] },
+    { text: "Sayfa 1 / 2", alignment: "center", fontSize: 7, margin: [0, 26, 0, 0] }
   ];
+  const pageTwo = [
+    { text: "SONUÇ TABLOSU", alignment: "center", bold: true, color: "#063f68", fontSize: 15, margin: [0, 28, 0, 14] },
+    table(["Test", "Pnom", "Pset", "ΔP", "Etkinleşme s", "Sürdürme s", "TRP A", "TRP B", "TRP C", "Ölü bant", "Sonuç"], reserve.map((record) => [record.name, model.metadata.PNOM_MW || "—", record.stepId.includes("MAX") ? model.metadata.PSET_MAX_MW || "—" : model.metadata.PSET_MIN_MW || "—", model.metadata.RPMAX_MW || "—", Number.isFinite(record.metrics.delaySeconds) ? record.metrics.delaySeconds.toFixed(2) : "—", Number.isFinite(record.metrics.durationSeconds) ? record.metrics.durationSeconds.toFixed(1) : "—", Number.isFinite(record.metrics.trpA) ? record.metrics.trpA.toFixed(1) : "—", Number.isFinite(record.metrics.trpB) ? record.metrics.trpB.toFixed(1) : "—", Number.isFinite(record.metrics.trpC) ? record.metrics.trpC.toFixed(1) : "—", model.metadata.DEADBAND_MHZ || "—", record.status]), [70, 34, 34, 34, 45, 45, 35, 35, 35, 35, 44], 5.5),
+    { text: model.documentText.certificateResult, fontSize: 8.5, lineHeight: 1.25, margin: [0, 13, 0, 8] },
+    { text: model.documentText.testResult, fontSize: 8.5, lineHeight: 1.25, margin: [0, 0, 0, 12] },
+    { text: `Düzenlenme tarihi: ${new Date().toLocaleDateString("tr-TR")}`, fontSize: 8 },
+    { columns: model.signatures.map((signature) => ({ width: "*", stack: [{ text: "\n\n______________________", alignment: "center" }, { text: signature.role, bold: true, alignment: "center", fontSize: 7 }, { text: signature.name, alignment: "center", fontSize: 7 }] })), columnGap: 8, margin: [0, 20, 0, 0] },
+    { text: model.documentText.draftWarning || "İMZA ÖNCESİ / TASLAK", bold: true, alignment: "center", color: "#8a5700", margin: [0, 20, 0, 0] },
+    { text: "Sayfa 2 / 2", alignment: "center", fontSize: 7, margin: [0, 16, 0, 0] }
+  ];
+  return [{ stack: pageOne, pageBreak: "after" }, { stack: pageTwo }];
 }
 
 function sectionContent(section, model) {
-  if (section.type === "technical" || section.type === "variables") return technicalContent(model);
-  if (section.type === "participants") return [{ table: { widths: [130, "*"], body: [["Test Ekibi / Katılımcılar", model.metadata.TEST_TEAM || "—"], ["Raporu Hazırlayan", model.metadata.REPORT_PREPARED_BY || "—"]] }, layout: "lightHorizontalLines", fontSize: 8 }];
+  if (section.type === "technical") return technicalContent(model);
+  if (section.type === "participants") return [table(["Alan", "Değer"], [["Test ekibi / katılımcılar", model.metadata.TEST_TEAM || "—"], ["Raporu hazırlayan", model.metadata.REPORT_PREPARED_BY || "—"]], [150, "*"], 7.7)];
+  if (section.type === "minutes") return minutesContent(model);
   if (section.type === "campaign-summary") return campaignContent(model.campaignSummary);
-  const records = section.type === "summary" ? model.records : model.records.filter((record) => section.stepIds.includes(record.stepId));
-  const content = section.type === "summary"
-    ? [{ text: `Otomatik değerlendirme: ${model.overallStatus} | Resmî çıktı statüsü: ${model.officialStatus}`, bold: true, fontSize: 8, margin: [0, 0, 0, 4] }, summaryTable(records)]
-    : [summaryTable(records)];
-  if (section.type === "records") {
-    for (const record of records) {
-      for (const chart of record.charts) {
-        content.push({ text: `${record.name} - ${chart.title}`, bold: true, fontSize: 8, margin: [0, 7, 0, 3] });
-        content.push({ image: chart.dataUrl, fit: [515, 190], alignment: "center", margin: [0, 0, 0, 8] });
-      }
-    }
-  }
-  return content;
+  if (section.type === "evidence") return [{ text: "SHA-256 özeti elektronik imza değildir; ham CSV arşiv zinciri için izlenebilirlik sağlar.", fontSize: 7.5 }, evidenceTable(model)];
+  if (section.type === "summary") return [{ text: model.documentText.testResult, fontSize: 8.3, margin: [0, 0, 0, 5] }, { text: `Otomatik değerlendirme: ${model.overallStatus} | Resmî çıktı statüsü: ${model.officialStatus}`, bold: true, fontSize: 8.2 }, summaryTable(model.records), ...(section.heading.includes("TESLİM") ? [{ text: model.documentText.copyDelivery, fontSize: 8 }] : [])];
+  if (section.type === "grouped-records") return groupedContent(model, section);
+  return recordContent(selected(model, section.stepIds));
 }
 
 export function makePdfDefinition(model) {
-  const content = [{
-    stack: [
-      ...(model.assets.logoDataUrl ? [{ image: model.assets.logoDataUrl, fit: [84, 112], alignment: "center", margin: [0, 80, 0, 28] }] : []),
-      { text: model.metadata.TESIS_ADI || "TESİS ADI", bold: true, alignment: "center", fontSize: 20, color: "#063f68", margin: [0, 0, 0, 20] },
-      { text: model.title, bold: true, alignment: "center", fontSize: 16, color: "#063f68", margin: [20, 0, 20, 30] },
-      { text: `Rapor No: ${model.metadata.REPORT_NO || "—"}\nTarih: ${model.metadata.TEST_DATE || "—"}\nİl: ${model.metadata.CITY || "—"}\nKapsam: ${model.campaign ? `${model.campaign.units.length} üniteli PFK kampanyası` : model.metadata.UNIT_ID || "—"}`, alignment: "center", fontSize: 10, lineHeight: 1.5 },
-      { text: model.officialStatus, bold: true, alignment: "center", color: model.officialStatus === "İMZA ÖNCESİ" ? "#19724f" : "#8a5700", margin: [0, 34, 0, 0], fontSize: 11 }
-    ],
-    pageBreak: "after"
-  }];
-  content.push({ text: "YÜKLEME VE TAMLIK DURUMU", style: "sectionHeading" });
-  content.push({ text: model.missingSteps.length ? `Eksik test adımları: ${model.missingSteps.map((step) => step.stepId).join(", ")}` : `Beklenen ${model.expectedStepCount} test adımının tamamı yüklendi.`, color: model.missingSteps.length ? "#9b1c1c" : "#19724f", bold: true, fontSize: 8.5 });
-  content.push({ text: model.reportNote, fontSize: 8, margin: [0, 4, 0, 8] });
-  model.sections.forEach((section) => {
-    content.push({ text: section.heading, style: "sectionHeading" });
-    content.push(...sectionContent(section, model));
-  });
-  content.push({ text: "RAPOR İÇİNDE KULLANILAN DEĞİŞKENLER", style: "sectionHeading" }, variableTable(model.variables));
-  content.push({ text: "İMZA ALANLARI", style: "sectionHeading" });
-  content.push({ columns: model.signatures.map((signature) => ({ width: "*", stack: [{ text: "\n\n________________________", alignment: "center" }, { text: signature.role, bold: true, alignment: "center", fontSize: 8 }, { text: signature.name, alignment: "center", fontSize: 8 }] })), columnGap: 12 });
-  return {
-    pageSize: "A4",
-    pageMargins: [36, 48, 36, 42],
-    defaultStyle: { font: "Roboto", fontSize: 9, color: "#172630" },
-    styles: { sectionHeading: { fontSize: 10, bold: true, color: "#244b64", fillColor: "#eaf2f7", margin: [0, 10, 0, 6] } },
-    footer: (currentPage, pageCount) => ({ text: `TEİAŞ-YHDA v${model.appVersion} | Sayfa ${currentPage}/${pageCount}`, alignment: "center", color: "#637585", fontSize: 7, margin: [0, 10, 0, 0] }),
-    info: { title: model.title, author: "TEİAŞ-YHDA", subject: model.reportType },
-    content
+  if (model.reportType.includes("Sertifika")) return {
+    pageSize: "A4", pageMargins: [40, 42, 40, 38], defaultStyle: { font: "Roboto", fontSize: 9, color: "#172630" },
+    watermark: model.watermark ? { text: model.watermark.text, color: "#005b9f", opacity: model.watermark.opacity, bold: true, fontSize: 54 } : undefined,
+    footer: (page) => ({ text: `TEİAŞ-YHDA v${model.appVersion} | ${page}/2`, alignment: "center", color: "#637585", fontSize: 7, margin: [0, 8, 0, 0] }), content: certificateContent(model)
   };
+  const content = [{ stack: [
+    ...(model.assets.logoDataUrl ? [{ image: model.assets.logoDataUrl, fit: [76, 104], alignment: "center", margin: [0, 65, 0, 24] }] : []),
+    { text: model.settings.institutionName || "TEİAŞ", bold: true, alignment: "center", fontSize: 12, color: "#244b64" },
+    { text: model.metadata.TESIS_ADI || "TESİS ADI", bold: true, alignment: "center", fontSize: 20, color: "#063f68", margin: [0, 14, 0, 16] },
+    { text: model.title, bold: true, alignment: "center", fontSize: 16, color: "#063f68", margin: [20, 0, 20, 25] },
+    { text: `Rapor No: ${model.metadata.REPORT_NO || "—"}\nTest Tarihi: ${model.metadata.TEST_DATE || "—"}\nİl: ${model.metadata.CITY || "—"}`, alignment: "center", fontSize: 9.5, lineHeight: 1.4 },
+    { text: model.documentText.draftWarning || "İMZA ÖNCESİ / TASLAK", bold: true, alignment: "center", color: "#8a5700", margin: [0, 28, 0, 0], fontSize: 10 }
+  ], pageBreak: "after" }];
+  content.push({ text: "İÇİNDEKİLER", style: "sectionHeading" }, { ol: model.sections.filter((section) => section.type !== "evidence").map((section) => section.heading), fontSize: 8.5, margin: [12, 4, 0, 12] }, { text: "YÜKLEME VE TAMLIK DURUMU", style: "sectionHeading" }, { text: model.missingSteps.length ? `Eksik test adımları: ${model.missingSteps.map((step) => step.stepId).join(", ")}` : `Beklenen ${model.expectedStepCount} test adımının tamamı yüklendi.`, color: model.missingSteps.length ? "#9b1c1c" : "#19724f", bold: true, fontSize: 8.5 }, { text: model.documentText.reportIntroduction, fontSize: 8.2, margin: [0, 4, 0, 5] }, { text: model.reportNote, fontSize: 8, margin: [0, 0, 0, 5] });
+  model.sections.forEach((section) => { content.push({ text: section.heading, style: "sectionHeading" }, ...sectionContent(section, model)); });
+  content.push({ text: "İMZA ALANLARI", style: "sectionHeading" }, { columns: model.signatures.map((signature) => ({ width: "*", stack: [{ text: "\n\n________________________", alignment: "center" }, { text: signature.role, bold: true, alignment: "center", fontSize: 7.5 }, { text: signature.name, alignment: "center", fontSize: 7.5 }] })), columnGap: 10 });
+  return { pageSize: "A4", pageMargins: [36, 48, 36, 42], defaultStyle: { font: "Roboto", fontSize: 9, color: "#172630" }, watermark: model.watermark ? { text: model.watermark.text, color: "#005b9f", opacity: model.watermark.opacity, bold: true, fontSize: 54 } : undefined, styles: { sectionHeading: { fontSize: 10, bold: true, color: "#244b64", fillColor: "#eaf2f7", margin: [0, 10, 0, 6] }, subHeading: { fontSize: 8.5, bold: true, color: "#244b64", margin: [0, 7, 0, 3] } }, footer: (currentPage, pageCount) => ({ text: `${model.settings.reportFooter || "TEİAŞ-YHDA"} | Sayfa ${currentPage}/${pageCount}`, alignment: "center", color: "#637585", fontSize: 7, margin: [0, 10, 0, 0] }), info: { title: model.title, author: "TEİAŞ-YHDA", subject: model.reportType }, content };
 }
 
 export async function createPdfBuffer(model) {
   const pdfMake = await loadPdfMake();
-  return await new Promise((resolve, reject) => {
-    try { pdfMake.createPdf(makePdfDefinition(model)).getBuffer((buffer) => resolve(new Uint8Array(buffer))); } catch (error) { reject(error); }
-  });
+  return await new Promise((resolve, reject) => { try { pdfMake.createPdf(makePdfDefinition(model)).getBuffer((buffer) => resolve(new Uint8Array(buffer))); } catch (error) { reject(error); } });
 }
-
-export async function createPdfBlob(model) {
-  return new Blob([await createPdfBuffer(model)], { type: "application/pdf" });
-}
+export async function createPdfBlob(model) { return new Blob([await createPdfBuffer(model)], { type: "application/pdf" }); }
