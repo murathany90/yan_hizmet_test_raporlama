@@ -70,6 +70,9 @@ test("downloads Turkish UTF-8 BOM CSV and keeps PFK campaign controls scoped", a
   await expect(page.getByRole("button", { name: "Ünite", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Karşılaştırma" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Santral", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "4. Kriterler" }).click();
+  await expect(page.getByRole("heading", { name: "PFK Çok Ünite Adım Kontrolü" })).toBeVisible();
+  await expect(page.locator("#criteriaContent details.criteria-step")).toHaveCount(20);
 });
 
 test("treats CSV metadata as text and keeps mobile navigation usable", async ({ page }) => {
