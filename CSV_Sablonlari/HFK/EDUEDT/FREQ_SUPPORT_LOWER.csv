@@ -1,0 +1,29 @@
+﻿# YHDA_VERSION=0.5
+# TEST_SERVICE=HFK
+# PLANT_TYPE=EDUEDT
+# STEP_ID=FREQ_SUPPORT_LOWER
+# STEP_NAME=Frekans Destek Rezervi — negatif yön
+# SAMPLE_PERIOD_MS=20
+# TESIS_ADI=
+# UNIT_ID=U1
+# TEST_DATE=2026-08-16
+# CITY=
+# COMPANY=
+# PNOM_MW=500
+# NOMINAL_VOLTAGE_KV=380
+# MEASUREMENT_DEVICE=
+# MEASUREMENT_SOFTWARE=
+# MEASUREMENT_ACCURACY_PERCENT=0.2
+# CALIBRATION_DATE=
+# TEST_ENGINEER=
+# REPORT_NO=
+# HFK_RESERVE_MW=20
+# ENERGY_CAPACITY_MWH=
+# SOC_INITIAL_PERCENT=
+# TEST_TEAM=TEİAŞ / Tesis / Test Ekibi
+# REPORT_PREPARED_BY=
+# RECORDING_COMPUTER=Saha Dizüstü Bilgisayarı
+# CALIBRATION_CERT_NO=
+# SOURCE_STATUS=Teknik kriter mevcut; ayrıntılı resmî test rapor formatı sağlanmamıştır
+time_s;frequency_hz;active_power_mw;soc_pct;stored_energy_mwh;dc_power_mw;rocof_hz_s;trigger;tie_line_flow_mw;voltage_kv
+0;50,000;;0,000;;;;;;380,000

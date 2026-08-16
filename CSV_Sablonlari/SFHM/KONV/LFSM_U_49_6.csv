@@ -1,0 +1,28 @@
+﻿# YHDA_VERSION=0.5
+# TEST_SERVICE=SFHM
+# PLANT_TYPE=KONV
+# STEP_ID=LFSM_U_49_6
+# STEP_NAME=Sınırlı frekans hassasiyet modu — düşük frekans / 49,6 Hz
+# SAMPLE_PERIOD_MS=100
+# TESIS_ADI=
+# UNIT_ID=U1
+# TEST_DATE=2026-08-16
+# CITY=
+# COMPANY=
+# PNOM_MW=500
+# NOMINAL_VOLTAGE_KV=380
+# MEASUREMENT_DEVICE=
+# MEASUREMENT_SOFTWARE=
+# MEASUREMENT_ACCURACY_PERCENT=0.2
+# CALIBRATION_DATE=
+# TEST_ENGINEER=
+# REPORT_NO=
+# SFHM_RESERVE_MW=20
+# DROOP_PERCENT=4
+# TEST_TEAM=TEİAŞ / Tesis / Test Ekibi
+# REPORT_PREPARED_BY=
+# RECORDING_COMPUTER=Saha Dizüstü Bilgisayarı
+# CALIBRATION_CERT_NO=
+# SOURCE_STATUS=Teknik kriter mevcut; ayrıntılı resmî test rapor formatı sağlanmamıştır
+time_s;grid_frequency_hz;active_power_mw;active_power_reference_mw;reserve_mw
+0;50,000;;;

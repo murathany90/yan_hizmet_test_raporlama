@@ -1,0 +1,36 @@
+﻿# YHDA_VERSION=0.5
+# TEST_SERVICE=RGDH
+# PLANT_TYPE=KONV
+# STEP_ID=UE_MID
+# STEP_NAME=Düşük ikaz — ara çıkış gücü
+# SAMPLE_PERIOD_MS=1000
+# TESIS_ADI=
+# UNIT_ID=U1
+# TEST_DATE=2026-08-16
+# CITY=
+# COMPANY=
+# PNOM_MW=500
+# NOMINAL_VOLTAGE_KV=380
+# MEASUREMENT_DEVICE=
+# MEASUREMENT_SOFTWARE=
+# MEASUREMENT_ACCURACY_PERCENT=0.2
+# CALIBRATION_DATE=
+# TEST_ENGINEER=
+# REPORT_NO=
+# Q_REQUIRED_OE_MVAR=
+# Q_REQUIRED_UE_MVAR=
+# VOLTAGE_DROOP_PERCENT=4
+# TOTAL_UNIT_COUNT=
+# ONLINE_UNIT_COUNT=
+# TEST_TEAM=TEİAŞ / Tesis / Test Ekibi
+# REPORT_PREPARED_BY=
+# RECORDING_COMPUTER=Saha Dizüstü Bilgisayarı
+# CALIBRATION_CERT_NO=
+# PMKUD_MW=
+# SGEN_MVA=
+# COSPHI_NOM=0.85
+# VNOM_GEN_KV=15.75
+# TRAFO_TAP_TYPE=Yükte kademe değiştirici
+# Q_TEST_DURATION_MIN=10
+time_s;bus_voltage_kv;internal_aux_voltage_v;active_power_mw;reactive_power_mvar;terminal_voltage_kv;excitation_current_a;stator_current_a;power_factor
+0;380,000;;;;380,000;;;

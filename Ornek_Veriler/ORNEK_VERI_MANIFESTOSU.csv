@@ -1,0 +1,88 @@
+﻿Hizmet;Tesis_Tipi;STEP_ID;Dosya;Satir_Sayisi;Ornekleme_ms;Yaklasik_Sure_s;Test_Adi
+PFK;HES;RES_MAX_NEG200;RES_MAX_NEG200_ORNEK.csv;9401;100;940.0;Maksimum çıkış gücü — Δf = -200 mHz / 49,8 Hz
+PFK;HES;RES_MAX_POS200;RES_MAX_POS200_ORNEK.csv;9401;100;940.0;Maksimum çıkış gücü — Δf = +200 mHz / 50,2 Hz
+PFK;HES;RES_MIN_NEG200;RES_MIN_NEG200_ORNEK.csv;9401;100;940.0;Minimum çıkış gücü — Δf = -200 mHz / 49,8 Hz
+PFK;HES;RES_MIN_POS200;RES_MIN_POS200_ORNEK.csv;9401;100;940.0;Minimum çıkış gücü — Δf = +200 mHz / 50,2 Hz
+PFK;HES;SENS_50_005;SENS_50_005_ORNEK.csv;2701;100;270.0;Hassasiyet — 50,005 Hz
+PFK;HES;SENS_50_010;SENS_50_010_ORNEK.csv;2701;100;270.0;Hassasiyet — 50,010 Hz
+PFK;HES;SENS_49_995;SENS_49_995_ORNEK.csv;2701;100;270.0;Hassasiyet — 49,995 Hz
+PFK;HES;SENS_49_990;SENS_49_990_ORNEK.csv;2701;100;270.0;Hassasiyet — 49,990 Hz
+PFK;HES;VALIDATION;VALIDATION_24SAAT_1S_ORNEK.csv;86400;1000;86399.0;Doğrulama testi — gerçek şebeke frekansı kaydı
+PFK;DGKCS;RES_MAX_NEG200;RES_MAX_NEG200_ORNEK.csv;9401;100;940.0;Maksimum çıkış gücü — Δf = -200 mHz / 49,8 Hz
+PFK;DGKCS;RES_MAX_POS200;RES_MAX_POS200_ORNEK.csv;9401;100;940.0;Maksimum çıkış gücü — Δf = +200 mHz / 50,2 Hz
+PFK;DGKCS;RES_MIN_NEG200;RES_MIN_NEG200_ORNEK.csv;9401;100;940.0;Minimum çıkış gücü — Δf = -200 mHz / 49,8 Hz
+PFK;DGKCS;RES_MIN_POS200;RES_MIN_POS200_ORNEK.csv;9401;100;940.0;Minimum çıkış gücü — Δf = +200 mHz / 50,2 Hz
+PFK;DGKCS;SENS_50_005;SENS_50_005_ORNEK.csv;2701;100;270.0;Hassasiyet — 50,005 Hz
+PFK;DGKCS;SENS_50_010;SENS_50_010_ORNEK.csv;2701;100;270.0;Hassasiyet — 50,010 Hz
+PFK;DGKCS;SENS_49_995;SENS_49_995_ORNEK.csv;2701;100;270.0;Hassasiyet — 49,995 Hz
+PFK;DGKCS;SENS_49_990;SENS_49_990_ORNEK.csv;2701;100;270.0;Hassasiyet — 49,990 Hz
+PFK;DGKCS;VALIDATION;VALIDATION_24SAAT_1S_ORNEK.csv;86400;1000;86399.0;Doğrulama testi — gerçek şebeke frekansı kaydı
+PFK;TES;RES_MAX_NEG200;RES_MAX_NEG200_ORNEK.csv;9401;100;940.0;Maksimum çıkış gücü — Δf = -200 mHz / 49,8 Hz
+PFK;TES;RES_MAX_POS200;RES_MAX_POS200_ORNEK.csv;9401;100;940.0;Maksimum çıkış gücü — Δf = +200 mHz / 50,2 Hz
+PFK;TES;RES_MIN_NEG200;RES_MIN_NEG200_ORNEK.csv;9401;100;940.0;Minimum çıkış gücü — Δf = -200 mHz / 49,8 Hz
+PFK;TES;RES_MIN_POS200;RES_MIN_POS200_ORNEK.csv;9401;100;940.0;Minimum çıkış gücü — Δf = +200 mHz / 50,2 Hz
+PFK;TES;SENS_50_005;SENS_50_005_ORNEK.csv;2701;100;270.0;Hassasiyet — 50,005 Hz
+PFK;TES;SENS_50_010;SENS_50_010_ORNEK.csv;2701;100;270.0;Hassasiyet — 50,010 Hz
+PFK;TES;SENS_49_995;SENS_49_995_ORNEK.csv;2701;100;270.0;Hassasiyet — 49,995 Hz
+PFK;TES;SENS_49_990;SENS_49_990_ORNEK.csv;2701;100;270.0;Hassasiyet — 49,990 Hz
+PFK;TES;VALIDATION;VALIDATION_24SAAT_1S_ORNEK.csv;86400;1000;86399.0;Doğrulama testi — gerçek şebeke frekansı kaydı
+PFK;EDUEDT;BESS_MAX_ENERGY_NEG200;BESS_MAX_ENERGY_NEG200_ORNEK.csv;9401;100;940.0;Maksimum enerji seviyesi — Δf = -200 mHz
+PFK;EDUEDT;BESS_MIN_ENERGY_POS200;BESS_MIN_ENERGY_POS200_ORNEK.csv;9401;100;940.0;Minimum enerji seviyesi — Δf = +200 mHz
+PFK;EDUEDT;BESS_SENS_NEG10;BESS_SENS_NEG10_ORNEK.csv;2601;100;260.0;Hassasiyet — -10 mHz
+PFK;EDUEDT;BESS_SENS_POS10;BESS_SENS_POS10_ORNEK.csv;2601;100;260.0;Hassasiyet — +10 mHz
+PFK;EDUEDT;BESS_SENS_NEG20;BESS_SENS_NEG20_ORNEK.csv;2601;100;260.0;Hassasiyet — -20 mHz
+PFK;EDUEDT;BESS_SENS_POS20;BESS_SENS_POS20_ORNEK.csv;2601;100;260.0;Hassasiyet — +20 mHz
+PFK;EDUEDT;BESS_VALIDATION_3H;BESS_VALIDATION_3H_ORNEK.csv;108001;100;10800.0;Doğrulama testi — 3 saat gerçek frekans
+RGDH;KONV;OE_MAX;OE_MAX_ORNEK.csv;781;1000;780.0;Aşırı ikaz — maksimum çıkış gücü
+RGDH;KONV;OE_MID;OE_MID_ORNEK.csv;781;1000;780.0;Aşırı ikaz — ara çıkış gücü
+RGDH;KONV;OE_MKUD;OE_MKUD_ORNEK.csv;781;1000;780.0;Aşırı ikaz — MKÜD çıkış gücü
+RGDH;KONV;UE_MAX;UE_MAX_ORNEK.csv;781;1000;780.0;Düşük ikaz — maksimum çıkış gücü
+RGDH;KONV;UE_MID;UE_MID_ORNEK.csv;781;1000;780.0;Düşük ikaz — ara çıkış gücü
+RGDH;KONV;UE_MKUD;UE_MKUD_ORNEK.csv;781;1000;780.0;Düşük ikaz — MKÜD çıkış gücü
+RGDH;RESGES;OE_MAX;OE_MAX_ORNEK.csv;781;1000;780.0;Aşırı ikaz — ulaşılabilir maksimum çıkış gücü
+RGDH;RESGES;UE_MAX;UE_MAX_ORNEK.csv;781;1000;780.0;Düşük ikaz — ulaşılabilir maksimum çıkış gücü
+RGDH;RESGES;OE_P50;OE_P50_ORNEK.csv;781;1000;780.0;Aşırı ikaz — %50 çıkış gücü
+RGDH;RESGES;UE_P50;UE_P50_ORNEK.csv;781;1000;780.0;Düşük ikaz — %50 çıkış gücü
+RGDH;RESGES;OE_P20;OE_P20_ORNEK.csv;781;1000;780.0;Aşırı ikaz — %20 çıkış gücü
+RGDH;RESGES;UE_P20;UE_P20_ORNEK.csv;781;1000;780.0;Düşük ikaz — %20 çıkış gücü
+RGDH;RESGES;VCTRL_PLUS1;VCTRL_PLUS1_ORNEK.csv;1401;100;140.0;Gerilim kontrolcüsü — +%1 basamak değişimi
+RGDH;RESGES;VCTRL_MINUS1;VCTRL_MINUS1_ORNEK.csv;1401;100;140.0;Gerilim kontrolcüsü — -%1 basamak değişimi
+RGDH;EDUEDT;DISCHARGE_OE_MAX;DISCHARGE_OE_MAX_ORNEK.csv;781;1000;780.0;Sisteme enerji verirken — aşırı ikaz maksimum
+RGDH;EDUEDT;DISCHARGE_UE_MAX;DISCHARGE_UE_MAX_ORNEK.csv;781;1000;780.0;Sisteme enerji verirken — düşük ikaz maksimum
+RGDH;EDUEDT;CHARGE_OE_MAX;CHARGE_OE_MAX_ORNEK.csv;781;1000;780.0;Sistemden enerji çekerken — aşırı ikaz maksimum
+RGDH;EDUEDT;CHARGE_UE_MAX;CHARGE_UE_MAX_ORNEK.csv;781;1000;780.0;Sistemden enerji çekerken — düşük ikaz maksimum
+RGDH;EDUEDT;VCTRL_PLUS1;VCTRL_PLUS1_ORNEK.csv;1401;100;140.0;Gerilim kontrolcüsü — +%1 basamak değişimi
+RGDH;EDUEDT;VCTRL_MINUS1;VCTRL_MINUS1_ORNEK.csv;1401;100;140.0;Gerilim kontrolcüsü — -%1 basamak değişimi
+HFK;EDUEDT;FREQ_SUPPORT_RAISE;FREQ_SUPPORT_RAISE_ORNEK.csv;851;20;17.0;Frekans Destek Rezervi — pozitif yön
+HFK;EDUEDT;FREQ_SUPPORT_LOWER;FREQ_SUPPORT_LOWER_ORNEK.csv;851;20;17.0;Frekans Destek Rezervi — negatif yön
+HFK;EDUEDT;SYNC_SUPPORT_RAISE;SYNC_SUPPORT_RAISE_ORNEK.csv;851;20;17.0;Senkron Bağlantı Destek Rezervi — pozitif yön
+HFK;EDUEDT;SYNC_SUPPORT_LOWER;SYNC_SUPPORT_LOWER_ORNEK.csv;851;20;17.0;Senkron Bağlantı Destek Rezervi — negatif yön
+SFHM;KONV;LFSM_U_49_6;LFSM_U_49_6_ORNEK.csv;9401;100;940.0;Sınırlı frekans hassasiyet modu — düşük frekans / 49,6 Hz
+SFHM;KONV;LFSM_O_50_4;LFSM_O_50_4_ORNEK.csv;9401;100;940.0;Sınırlı frekans hassasiyet modu — yüksek frekans / 50,4 Hz
+SFHM;EDUEDT;LFSM_U_49_6;LFSM_U_49_6_ORNEK.csv;9401;100;940.0;Sınırlı frekans hassasiyet modu — düşük frekans / 49,6 Hz
+SFHM;EDUEDT;LFSM_O_50_4;LFSM_O_50_4_ORNEK.csv;9401;100;940.0;Sınırlı frekans hassasiyet modu — yüksek frekans / 50,4 Hz
+SFK;HES;MAX_LOAD_UP;MAX_LOAD_UP_ORNEK.csv;421;1000;420.0;Maksimum kapasite bölgesi — yük alma testi
+SFK;HES;MAX_LOAD_DOWN;MAX_LOAD_DOWN_ORNEK.csv;421;1000;420.0;Maksimum kapasite bölgesi — yük atma testi
+SFK;HES;MIN_LOAD_DOWN;MIN_LOAD_DOWN_ORNEK.csv;421;1000;420.0;Minimum kapasite bölgesi — yük atma testi
+SFK;HES;MIN_LOAD_UP;MIN_LOAD_UP_ORNEK.csv;421;1000;420.0;Minimum kapasite bölgesi — yük alma testi
+SFK;HES;PFK_ON_LOAD_DOWN;PFK_ON_LOAD_DOWN_ORNEK.csv;421;1000;420.0;PFK devrede — yük atma testi
+SFK;HES;PFK_ON_LOAD_UP;PFK_ON_LOAD_UP_ORNEK.csv;421;1000;420.0;PFK devrede — yük alma testi
+SFK;HES;LFC_SIGNAL_CHECK;LFC_SIGNAL_CHECK_ORNEK.csv;421;1000;420.0;LFC/AGC sinyal, alarm ve durum bilgileri kontrolü
+SFK;DGKCS;MAX_LOAD_UP;MAX_LOAD_UP_ORNEK.csv;421;1000;420.0;Maksimum kapasite bölgesi — yük alma testi
+SFK;DGKCS;MAX_LOAD_DOWN;MAX_LOAD_DOWN_ORNEK.csv;421;1000;420.0;Maksimum kapasite bölgesi — yük atma testi
+SFK;DGKCS;MIN_LOAD_DOWN;MIN_LOAD_DOWN_ORNEK.csv;421;1000;420.0;Minimum kapasite bölgesi — yük atma testi
+SFK;DGKCS;MIN_LOAD_UP;MIN_LOAD_UP_ORNEK.csv;421;1000;420.0;Minimum kapasite bölgesi — yük alma testi
+SFK;DGKCS;PFK_ON_LOAD_DOWN;PFK_ON_LOAD_DOWN_ORNEK.csv;421;1000;420.0;PFK devrede — yük atma testi
+SFK;DGKCS;PFK_ON_LOAD_UP;PFK_ON_LOAD_UP_ORNEK.csv;421;1000;420.0;PFK devrede — yük alma testi
+SFK;DGKCS;LFC_SIGNAL_CHECK;LFC_SIGNAL_CHECK_ORNEK.csv;421;1000;420.0;LFC/AGC sinyal, alarm ve durum bilgileri kontrolü
+SFK;TES;MAX_LOAD_UP;MAX_LOAD_UP_ORNEK.csv;421;1000;420.0;Maksimum kapasite bölgesi — yük alma testi
+SFK;TES;MAX_LOAD_DOWN;MAX_LOAD_DOWN_ORNEK.csv;421;1000;420.0;Maksimum kapasite bölgesi — yük atma testi
+SFK;TES;MIN_LOAD_DOWN;MIN_LOAD_DOWN_ORNEK.csv;421;1000;420.0;Minimum kapasite bölgesi — yük atma testi
+SFK;TES;MIN_LOAD_UP;MIN_LOAD_UP_ORNEK.csv;421;1000;420.0;Minimum kapasite bölgesi — yük alma testi
+SFK;TES;PFK_ON_LOAD_DOWN;PFK_ON_LOAD_DOWN_ORNEK.csv;421;1000;420.0;PFK devrede — yük atma testi
+SFK;TES;PFK_ON_LOAD_UP;PFK_ON_LOAD_UP_ORNEK.csv;421;1000;420.0;PFK devrede — yük alma testi
+SFK;TES;LFC_SIGNAL_CHECK;LFC_SIGNAL_CHECK_ORNEK.csv;421;1000;420.0;LFC/AGC sinyal, alarm ve durum bilgileri kontrolü
+SFK;EDUEDT;AGC_RAISE;AGC_RAISE_ORNEK.csv;421;1000;420.0;AGC — pozitif rezerv etkinleştirme
+SFK;EDUEDT;AGC_LOWER;AGC_LOWER_ORNEK.csv;421;1000;420.0;AGC — negatif rezerv etkinleştirme
+SFK;EDUEDT;ENERGY_RESERVE;ENERGY_RESERVE_ORNEK.csv;421;1000;420.0;Rezerv enerji / SoC yeterlilik kaydı
+SFK;EDUEDT;LFC_SIGNAL_CHECK;LFC_SIGNAL_CHECK_ORNEK.csv;421;1000;420.0;AGC/LFC arayüz ve durum sinyalleri
