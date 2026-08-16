@@ -11,6 +11,12 @@ TEİAŞ Yan Hizmetler Doğrulama Aracı; PFK, RGDH, HFK, SFHM ve SFK test kayıt
 - Ayarlar metinleri hizmet ve belge türü bağlamında düzenlenir; `{{TESIS_ADI}}`, `{{UNIT_NAME}}`, `{{PNOM_MW}}` dahil desteklenen placeholder’lar arayüzde görünür.
 - SHA-256 dosya bütünlüğünü doğrular; elektronik imza değildir.
 
+Taşınabilir Windows çıktısı için her güncellemeden sonra aşağıdaki komut kullanılabilir. Komut, Tauri release ikilisini `dist/TEIAS-YHDA_v<sürüm>_portable_<YYYYMMDD-HHMMSS>.exe` adına kopyalar.
+
+```powershell
+npm.cmd run release:portable
+```
+
 ## v0.6.2 — gerçek zaman ekseni, kanıt zinciri ve belge ayarları
 
 - Yeni oluşturulan tüm CSV şablonları `ZAMAN;SIRA_NO` ile başlar. `12.3.2026 11:09:19,1s` biçimindeki gerçek zaman damgası grafik, rapor ve doğrulama ekseninde korunur; eski `time_s` dosyaları yalnız geriye dönük okuma için kabul edilir.
