@@ -1,5 +1,5 @@
 import { parseLocaleNumber } from "../csv/parser.js";
-import { PFK_CRITERIA } from "../criteria/pfk.js";
+import { buildOfficialReserveEnvelope, PFK_CRITERIA } from "../criteria/pfk.js";
 
 const number = (value, fallback = Number.NaN) => parseLocaleNumber(value, fallback);
 const finite = (values) => values.filter(Number.isFinite);
@@ -96,6 +96,38 @@ function statusFromChecks(checks, missing = false) {
   return checks.every(Boolean) ? "GEÇTİ" : "KALDI";
 }
 
+function reserveSetpoint(metadata, stepId, fallback) {
+  const directional = String(stepId).includes("MIN") ? metadata.PSET_MIN_MW : metadata.PSET_MAX_MW;
+  return number(metadata.PSET_MW ?? directional ?? metadata.PSET_MAX_MW ?? metadata.PSET_MIN_MW, fallback);
+}
+
+function officialReserveOnsetIndex(rows, event, criteria = PFK_CRITERIA) {
+  const sign = event.eventId === "NEG200" ? -1 : 1;
+  const threshold = criteria.reserve.officialOnsetDeviationHz;
+  let index = event.startIndex;
+  while (index > 0 && sign * (number(rows[index - 1].test_frequency_hz) - criteria.reserve.nominalFrequencyHz) >= threshold) index -= 1;
+  return index;
+}
+
+function trpResult(rows, startTime, startSeconds, endSeconds, band, envelopeInput) {
+  const selected = rows.filter((row) => {
+    const time = number(row.time_s) - startTime;
+    return time >= startSeconds && time <= endSeconds && Number.isFinite(number(row.active_power_mw));
+  });
+  const inside = selected.filter((row) => {
+    const time = number(row.time_s) - startTime;
+    const envelope = buildOfficialReserveEnvelope({ ...envelopeInput, t: time });
+    const range = envelope[band];
+    const power = number(row.active_power_mw);
+    return power >= range.lower && power <= range.upper;
+  }).length;
+  return {
+    percentage: selected.length ? (inside / selected.length) * 100 : Number.NaN,
+    samples: selected.length,
+    inside
+  };
+}
+
 /** Returns stable -200/+200 mHz plateaus from a single canonical reserve CSV. */
 export function segmentPfkReserveEvents(rows, criteria = PFK_CRITERIA) {
   const settings = criteria.reserve;
@@ -126,46 +158,56 @@ export function segmentPfkReserveEvents(rows, criteria = PFK_CRITERIA) {
   return { events, sampleSeconds, debounceRows };
 }
 
-function evaluateReserveEvent(rows, event, metadata, plant, criteria = PFK_CRITERIA) {
+function evaluateReserveEvent(rows, event, metadata, plant, stepId = "", criteria = PFK_CRITERIA) {
   const settings = criteria.reserve;
   const pnom = number(metadata.PNOM_MW, Number.NaN);
   const reserve = number(metadata.RPMAX_MW, Number.NaN);
-  const start = event.startIndex;
-  const end = Math.min(event.endIndex, atOrAfter(rows, start, settings.sustainSeconds));
-  const before = rows.slice(Math.max(0, start - 200), start)
+  const stableStart = event.startIndex;
+  const officialStart = officialReserveOnsetIndex(rows, event, criteria);
+  const end = Math.min(event.endIndex, atOrAfter(rows, officialStart, settings.sustainSeconds));
+  const before = rows.slice(Math.max(0, officialStart - 200), officialStart)
     .filter((row) => Math.abs(number(row.test_frequency_hz) - settings.nominalFrequencyHz) <= settings.nominalToleranceHz);
-  const baselineRows = before.length ? before : rows.slice(Math.max(0, start - 200), start);
+  const baselineRows = before.length ? before : rows.slice(Math.max(0, officialStart - 200), officialStart);
   const baseline = average(baselineRows.map((row) => number(row.active_power_mw)));
+  const pSet = reserveSetpoint(metadata, stepId, baseline);
   const direction = event.eventId === "NEG200" ? 1 : -1;
-  const eventRows = rows.slice(start, end + 1);
-  const relative = eventRows.map((row) => ({ row, time: number(row.time_s) - number(rows[start].time_s), response: direction * (number(row.active_power_mw) - baseline) }));
+  const eventRows = rows.slice(officialStart, end + 1);
+  const stableStartTime = number(rows[stableStart].time_s);
+  const officialStartTime = number(rows[officialStart].time_s);
+  const relative = eventRows.map((row) => ({ row, time: number(row.time_s) - officialStartTime, response: direction * (number(row.active_power_mw) - baseline) }));
   const noise = standardDeviation(baselineRows.map((row) => direction * (number(row.active_power_mw) - baseline)));
   const threshold = Math.max(3 * (Number.isFinite(noise) ? noise : 0), 0.0005 * (Number.isFinite(pnom) ? pnom : 0), 0.005 * (Number.isFinite(reserve) ? reserve : 0));
+  const sampleSeconds = median(sampleDeltas(eventRows));
+  const delayDebounceRows = Math.max(1, Math.ceil((settings.debounceMs / 1000) / (sampleSeconds || 0.1)));
   let delay = Number.NaN;
   let t50 = Number.NaN;
   let t100 = Number.NaN;
-  for (const item of relative) {
-    if (!Number.isFinite(delay) && item.response >= threshold) delay = item.time;
+  for (let index = 0; index < relative.length; index += 1) {
+    const item = relative[index];
+    if (!Number.isFinite(delay) && item.response >= threshold && relative.slice(index, index + delayDebounceRows).every((candidate) => candidate.response >= threshold)) delay = item.time;
     if (!Number.isFinite(t50) && item.response >= 0.5 * reserve) t50 = item.time;
     if (!Number.isFinite(t100) && item.response >= 0.98 * reserve) t100 = item.time;
   }
-  const trp = Object.fromEntries(settings.trpBands.map((band) => {
-    const startSeconds = band.start === "response" ? (Number.isFinite(delay) ? delay : Number.POSITIVE_INFINITY) : band.startSeconds;
-    const selected = relative.filter((item) => item.time >= startSeconds && item.time <= band.endSeconds && Number.isFinite(item.response));
-    const toleranceMw = band.tolerancePnomRatio * pnom;
-    const inside = selected.filter((item) => {
-      const expected = reserve * Math.max(0, Math.min(1, (item.time - (Number.isFinite(delay) ? delay : 0)) / Math.max(1, settings.t100LimitSeconds - (Number.isFinite(delay) ? delay : 0))));
-      return Math.abs(item.response - expected) <= toleranceMw;
-    }).length;
-    const percentage = selected.length ? (inside / selected.length) * 100 : Number.NaN;
-    return [band.id, { percentage, samples: selected.length, inside, toleranceMw }];
-  }));
+  const envelopeInput = { direction: event.eventId, pSet, rpMax: reserve, pNom: pnom, responseDelay: Number.isFinite(delay) ? delay : 0 };
+  const trp = {
+    TRP_A: trpResult(eventRows, officialStartTime, Number.isFinite(delay) ? delay : 0, 30, "trpA", envelopeInput),
+    TRP_B: trpResult(eventRows, officialStartTime, 30, 90, "trpB", envelopeInput),
+    TRP_C: trpResult(eventRows, officialStartTime, 90, 900, "trpC", envelopeInput)
+  };
+  const stableSustainRows = rows.slice(stableStart, Math.min(event.endIndex, atOrAfter(rows, stableStart, settings.sustainSeconds)) + 1)
+    .filter((row) => {
+      const time = number(row.time_s) - stableStartTime;
+      return time >= 90 && time <= settings.sustainSeconds;
+    });
+  const sustainedPower = average(stableSustainRows.map((row) => number(row.active_power_mw)));
+  const deltaPowerMw = direction * (sustainedPower - pSet);
+  const officialActivation = relative.find((item) => direction * (number(item.row.active_power_mw) - pSet) >= reserve)?.time ?? Number.NaN;
   const delayLimit = settings.responseDelayLimitSeconds[plant] ?? settings.responseDelayLimitSeconds.DEFAULT;
-  const sampleSeconds = median(sampleDeltas(eventRows));
   const sustained = event.durationSeconds + (sampleSeconds || 0) >= settings.sustainSeconds;
   const checks = [
     Number.isFinite(pnom) && pnom > 0,
     Number.isFinite(reserve) && reserve > 0,
+    Number.isFinite(pSet),
     Number.isFinite(baseline),
     sampleSeconds <= (criteria.sampling.requiredMs / 1000) * (1 + criteria.sampling.toleranceRatio),
     delay <= delayLimit,
@@ -174,18 +216,20 @@ function evaluateReserveEvent(rows, event, metadata, plant, criteria = PFK_CRITE
     sustained,
     ...Object.values(trp).map((item) => item.percentage >= settings.trpPassRatio * 100)
   ];
-  const missing = !Number.isFinite(pnom) || !Number.isFinite(reserve) || !Number.isFinite(baseline);
-  const chartRows = rows.slice(Math.max(0, start - Math.ceil(settings.preEventWindowSeconds / (sampleSeconds || 0.1))), end + 1).map((row) => {
-    const time = number(row.time_s) - number(rows[start].time_s);
-    const expectedResponse = time < 0 ? 0 : reserve * Math.max(0, Math.min(1, (time - (Number.isFinite(delay) ? delay : 0)) / Math.max(1, settings.t100LimitSeconds - (Number.isFinite(delay) ? delay : 0))));
-    const expectedActive = baseline + direction * expectedResponse;
-    const tolerance = (time >= 0 ? (time <= 90 ? 0.02 : 0.01) : 0.02) * pnom;
+  const missing = !Number.isFinite(pnom) || !Number.isFinite(reserve) || !Number.isFinite(pSet) || !Number.isFinite(baseline);
+  const chartRows = rows.slice(Math.max(0, officialStart - Math.ceil(settings.preEventWindowSeconds / (sampleSeconds || 0.1))), end + 1).map((row) => {
+    const time = number(row.time_s) - officialStartTime;
+    const envelope = buildOfficialReserveEnvelope({ ...envelopeInput, responseDelay: Number.isFinite(delay) ? delay : 0, t: Math.max(0, time) });
+    const range = time <= 30 ? envelope.trpA : time <= 90 ? envelope.trpB : envelope.trpC;
     return {
       ...row,
       time_s: time,
-      expected_active_power_mw: expectedActive,
-      tolerance_lower_mw: expectedActive - tolerance,
-      tolerance_upper_mw: expectedActive + tolerance
+      p_set_mw: pSet,
+      expected_active_power_mw: time < 0 ? pSet : envelope.expected,
+      tolerance_lower_mw: range.lower,
+      tolerance_upper_mw: range.upper,
+      official_activation_time_s: Number.isFinite(officialActivation) ? officialActivation : Number.NaN,
+      response_delay_time_s: Number.isFinite(delay) ? delay : Number.NaN
     };
   });
   return {
@@ -193,15 +237,22 @@ function evaluateReserveEvent(rows, event, metadata, plant, criteria = PFK_CRITE
     direction: direction > 0 ? "UNDER_FREQUENCY" : "OVER_FREQUENCY",
     status: statusFromChecks(checks, missing),
     baselinePowerMw: baseline,
+    measuredPreEventBaselineMw: baseline,
+    pSetMw: pSet,
+    pNomMw: pnom,
     reserveMw: reserve,
     delaySeconds: delay,
+    deltaTdSeconds: delay,
     t50Seconds: t50,
     t100Seconds: t100,
+    officialActivationTimeSeconds: officialActivation,
+    deltaPowerMw,
     sampleMs: sampleSeconds * 1000,
     sustainSeconds: event.durationSeconds,
+    sustainedPowerMw: sustainedPower,
     trp,
     chartRows,
-    detail: `Δtd=${formatMetric(delay)} s; t50=${formatMetric(t50)} s; t100=${formatMetric(t100)} s; TRP-A/B/C=${formatMetric(trp.TRP_A.percentage, 1)}/${formatMetric(trp.TRP_B.percentage, 1)}/${formatMetric(trp.TRP_C.percentage, 1)} %.`
+    detail: `Δtd=${formatMetric(delay)} s; t50=${formatMetric(t50)} s; t100=${formatMetric(t100)} s; Etkinleştirme=${formatMetric(officialActivation)} s; ΔP=${formatMetric(deltaPowerMw, 3)} MW; TRP-A/B/C=${formatMetric(trp.TRP_A.percentage, 3)}/${formatMetric(trp.TRP_B.percentage, 3)}/${formatMetric(trp.TRP_C.percentage, 3)} %.`
   };
 }
 
@@ -217,7 +268,7 @@ function evaluatePfkReserveSequence(record, metadata, plant) {
       warnings.push(`${eventId === "NEG200" ? "−200" : "+200"} mHz olayı bulunamadı.`);
       continue;
     }
-    selected.push(evaluateReserveEvent(record.rows, segmentation.events[found], metadata, plant));
+    selected.push(evaluateReserveEvent(record.rows, segmentation.events[found], metadata, plant, record.step.id));
     cursor = found + 1;
   }
   const outOfOrder = !record.legacyReserveEventId && segmentation.events.some((event, index) => index && event.eventId === "NEG200" && segmentation.events[index - 1].eventId === "POS200");
@@ -255,13 +306,31 @@ function evaluatePfkValidation(record, metadata) {
   const durationSeconds = duration(rows);
   const positiveIndex = derivedRows.reduce((best, row, index) => !best || number(row.grid_frequency_hz) > number(derivedRows[best].grid_frequency_hz) ? index : best, 0);
   const negativeIndex = derivedRows.reduce((best, row, index) => !best || number(row.grid_frequency_hz) < number(derivedRows[best].grid_frequency_hz) ? index : best, 0);
-  const window = (index) => derivedRows.slice(Math.max(0, index - 600), Math.min(derivedRows.length, index + 601));
+  const window = (index) => {
+    const center = derivedRows[index];
+    const centerTime = Number.isFinite(center?.timestamp_ms) ? center.timestamp_ms : number(center?.time_s) * 1000;
+    return derivedRows.filter((row) => {
+      const time = Number.isFinite(row.timestamp_ms) ? row.timestamp_ms : number(row.time_s) * 1000;
+      return Number.isFinite(time) && Math.abs(time - centerTime) <= 300_000;
+    });
+  };
   const missing = !Number.isFinite(pnom) || !Number.isFinite(reserve) || !Number.isFinite(baselineReference);
   const passed = !missing && durationSeconds + (sampleSeconds || 0) >= PFK_CRITERIA.validation24h.minimumSeconds && ratio >= PFK_CRITERIA.validation24h.passRatio * 100;
   return {
     status: statusFromChecks([passed], missing),
     detail: `24 saat uygunluk oranı=${formatMetric(ratio, 1)} %; süre=${formatMetric(durationSeconds, 0)} s; kabul ≥${PFK_CRITERIA.validation24h.passRatio * 100} % ve ≥${PFK_CRITERIA.validation24h.minimumSeconds} s.`,
-    metrics: { criteriaId: PFK_CRITERIA.id, durationSeconds, sampleMs: sampleSeconds * 1000, compliancePercent: ratio, validationRows: derivedRows, positiveCriticalWindow: window(positiveIndex), negativeCriticalWindow: window(negativeIndex) }
+    metrics: {
+      criteriaId: PFK_CRITERIA.id,
+      durationSeconds,
+      sampleMs: sampleSeconds * 1000,
+      compliancePercent: ratio,
+      evaluationSamples: derivedRows.length,
+      compliantSamples: inside,
+      expectedEvaluationSamples: Math.round(86_400 / (sampleSeconds || 0.1)),
+      validationRows: derivedRows,
+      positiveCriticalWindow: window(positiveIndex),
+      negativeCriticalWindow: window(negativeIndex)
+    }
   };
 }
 
@@ -291,29 +360,63 @@ function evaluatePfkBessReserve(record, metadata) {
 
 function evaluatePfkSensitivity(record, metadata) {
   const rows = record.rows;
-  const baselineFrequency = average(rows.slice(0, Math.min(100, rows.length)).map((row) => number(row.test_frequency_hz)));
+  const settings = PFK_CRITERIA.sensitivity;
+  const sampleSeconds = median(sampleDeltas(rows)) || 0.1;
+  const minimumRows = Math.max(5, Math.ceil(settings.minimumPlateauSeconds / sampleSeconds));
+  const targetFor = (frequency) => {
+    if (!Number.isFinite(frequency)) return null;
+    const target = settings.targetsHz.reduce((best, candidate) => Math.abs(candidate - frequency) < Math.abs(best - frequency) ? candidate : best, settings.targetsHz[0]);
+    return Math.abs(target - frequency) <= settings.targetToleranceHz ? target : null;
+  };
   const segments = [];
   let active = null;
-  for (const row of rows) {
-    const frequency = number(row.test_frequency_hz);
-    const target = Number.isFinite(frequency) && Math.abs(frequency - baselineFrequency) >= 0.002 ? frequency.toFixed(3) : "";
+  rows.forEach((row, index) => {
+    const target = targetFor(number(row.test_frequency_hz));
     if (target !== active?.target) {
-      if (active?.rows.length >= 5) segments.push(active);
-      active = target ? { target, rows: [row] } : null;
-    } else if (active) active.rows.push(row);
-  }
-  if (active?.rows.length >= 5) segments.push(active);
-  const baselinePower = average(rows.slice(0, Math.min(100, rows.length)).map((row) => number(row.active_power_mw)));
-  const pnom = number(metadata.PNOM_MW, 1);
-  const results = segments.slice(0, 4).map((segment) => {
-    const meanPower = average(segment.rows.map((row) => number(row.active_power_mw)));
-    return { frequencyHz: Number(segment.target), deltaPowerMw: meanPower - baselinePower, sensitivityMwPerHz: (meanPower - baselinePower) / (Number(segment.target) - baselineFrequency) };
+      if (active?.rows.length >= minimumRows) segments.push(active);
+      active = target === null ? null : { target, startIndex: index, endIndex: index, rows: [row] };
+    } else if (active) {
+      active.endIndex = index;
+      active.rows.push(row);
+    }
   });
-  const passed = results.length >= 4 && results.every((item) => Number.isFinite(item.deltaPowerMw) && Math.abs(item.deltaPowerMw) <= Math.max(pnom * 0.04, 10));
+  if (active?.rows.length >= minimumRows) segments.push(active);
+  const selected = settings.targetsHz.map((target) => segments.filter((segment) => segment.target === target).sort((left, right) => right.rows.length - left.rows.length)[0]).filter(Boolean);
+  const results = selected.map((segment) => {
+    const baselineRows = rows.slice(Math.max(0, segment.startIndex - Math.ceil(20 / sampleSeconds)), segment.startIndex)
+      .filter((row) => Math.abs(number(row.test_frequency_hz) - PFK_CRITERIA.reserve.nominalFrequencyHz) <= PFK_CRITERIA.reserve.nominalToleranceHz);
+    const fallbackBaseline = rows.slice(Math.max(0, segment.startIndex - Math.ceil(20 / sampleSeconds)), segment.startIndex);
+    const referenceRows = baselineRows.length ? baselineRows : fallbackBaseline;
+    const baselinePower = average(referenceRows.map((row) => number(row.active_power_mw)));
+    const baselineGuideVane = average(referenceRows.map((row) => number(row.guide_vane_pct)));
+    const guideNoise = standardDeviation(referenceRows.map((row) => number(row.guide_vane_pct)));
+    const meanPower = average(segment.rows.map((row) => number(row.active_power_mw)));
+    const meanFrequency = average(segment.rows.map((row) => number(row.test_frequency_hz)));
+    const meanGuideVane = average(segment.rows.map((row) => number(row.guide_vane_pct)));
+    const guideVaneDeltaPct = meanGuideVane - baselineGuideVane;
+    const guideEvidenceThresholdPct = Math.max(0.01, Math.min(settings.guideResponseMinimumPct, 3 * (Number.isFinite(guideNoise) ? guideNoise : 0)));
+    const guideVaneEvidence = Number.isFinite(meanGuideVane) && Number.isFinite(baselineGuideVane) && Math.abs(guideVaneDeltaPct) >= guideEvidenceThresholdPct;
+    const startTime = number(rows[segment.startIndex].time_s);
+    return {
+      targetFrequencyHz: segment.target,
+      frequencyHz: segment.target,
+      measuredFrequencyHz: meanFrequency,
+      deltaPowerMw: meanPower - baselinePower,
+      guideVaneDeltaPct,
+      guideVaneEvidence,
+      guideEvidenceThresholdPct,
+      measuredDeadbandMhz: Math.abs(segment.target - PFK_CRITERIA.reserve.nominalFrequencyHz) * 1000,
+      sampleCount: segment.rows.length,
+      chartRows: rows.slice(Math.max(0, segment.startIndex - Math.ceil(15 / sampleSeconds)), Math.min(rows.length, segment.endIndex + Math.ceil(15 / sampleSeconds) + 1)).map((row) => ({ ...row, time_s: number(row.time_s) - startTime }))
+    };
+  });
+  const passed = results.length === settings.requiredSteps
+    && settings.targetsHz.every((target, index) => results[index]?.targetFrequencyHz === target)
+    && results.every((item) => item.guideVaneEvidence && item.measuredDeadbandMhz <= settings.deadbandLimitMhz);
   return {
     status: passed ? "GEÇTİ" : "İNCELEME GEREKLİ",
-    detail: results.length ? `Tek CSV içinde ${results.length}/4 hassasiyet basamağı tespit edildi: ${results.map((item) => `${item.frequencyHz.toFixed(3)} Hz / ΔP=${formatMetric(item.deltaPowerMw, 3)} MW`).join("; ")}` : "Hassasiyet frekans basamakları tek CSV içinde tespit edilemedi.",
-    metrics: { sensitivityResults: results, segmentCount: results.length }
+    detail: results.length ? `Tek CSV içinde ${results.length}/4 hassasiyet basamağı tespit edildi: ${results.map((item) => `${item.targetFrequencyHz.toFixed(3)} Hz / ayar kanadı Δ=${formatMetric(item.guideVaneDeltaPct, 3)} % / ölü bant=${formatMetric(item.measuredDeadbandMhz, 1)} mHz`).join("; ")}` : "Hassasiyet frekans basamakları tek CSV içinde tespit edilemedi.",
+    metrics: { sensitivityResults: results, segmentCount: results.length, sampleMs: sampleSeconds * 1000, deadbandLimitMhz: settings.deadbandLimitMhz }
   };
 }
 

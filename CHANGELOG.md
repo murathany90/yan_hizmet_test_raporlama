@@ -2,6 +2,17 @@
 
 Bu proje [Semantic Versioning](https://semver.org/) yaklaşımını izler.
 
+## [0.7.1] - 2026-08-18
+
+### Değişti
+
+- Uygulama görünür adı `YDA (Yan Hizmetler Testleri Doğrulama Aracı)` olarak güncellendi.
+- PFK rezerv değerlendirmesi Pset tabanlı yönsel TEİAŞ zarfı, ΔP 90–900 s ölçümü ve resmî etkinleştirme süresi ile birleştirildi.
+
+### Eklendi
+
+- Köprü HES PFK FigureModel, hassasiyet platosu, 24 saat zaman-tabanlı kritik pencereler, A–G sonuç tabloları ve opsiyonel teknik kanıt eki.
+
 ## [0.7.0] - 2026-08-17
 
 ### Değişti

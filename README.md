@@ -1,8 +1,8 @@
-# YDA (Yan Hizmetler Doğrulama Aracı) v0.7.0
+# YDA (Yan Hizmetler Testleri Doğrulama Aracı) v0.7.1
 
-YDA (Yan Hizmetler Doğrulama Aracı); PFK, RGDH, HFK, SFHM ve SFK test kayıtlarını yerel olarak doğrulayan, grafikleyen ve ortak bir rapor modelinden PDF/DOCX çıktısı üreten çevrimdışı odaklı bir web/Tauri uygulamasıdır.
+YDA (Yan Hizmetler Testleri Doğrulama Aracı); PFK, RGDH, HFK, SFHM ve SFK test kayıtlarını yerel olarak doğrulayan, grafikleyen ve ortak bir rapor modelinden PDF/DOCX çıktısı üreten çevrimdışı odaklı bir web/Tauri uygulamasıdır.
 
-## v0.7.0 — YDA markası ve 4-CSV klasik PFK
+## v0.7.1 — Köprü HES PFK resmî zarf ve belge paritesi
 
 - Uygulama, installer, taskbar/EXE ve web favicon için `docs/icon.png` temelli YDA ikonu kullanılır.
 - Klasik PFK HES/DGKÇS/TES yeni şablonları `MAKSIMUM_REZERV.csv`, `MINIMUM_REZERV.csv`, `HASSASIYET.csv` ve `DOGRULAMA_24H.csv` olarak üretilir. Maksimum/minimum dosyası kendi içinde −200/+200 mHz olaylarını barındırır ve ayırır.

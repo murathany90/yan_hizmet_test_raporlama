@@ -17,6 +17,16 @@ const EQUIPMENT_FIELDS = [
   ["TURBINE_GENERATOR_DESCRIPTION", "Türbin / jeneratör açıklaması", "text", ""],
   ["UNIT_OPERATION_MODE", "Ünite işletme modu", "text", ""]
 ];
+const PFK_OFFICIAL_FIELDS = [
+  ["TEST_START_DATE", "Test başlangıç tarihi", "date", ""],
+  ["TEST_END_DATE", "Test bitiş tarihi", "date", ""],
+  ["DOCUMENT_DATE", "Belge düzenleme tarihi", "date", ""],
+  ["VALIDATION_START", "24 saat doğrulama başlangıcı", "text", ""],
+  ["VALIDATION_END", "24 saat doğrulama bitişi", "text", ""],
+  ["PARTICIPANTS", "Katılımcılar (Ad Soyad | Kurum | Ünvan | Rol; ile ayırın)", "text", ""],
+  ["ALTITUDE_M", "Tesis kotu [m]", "number", ""],
+  ["AMBIENT_TEMPERATURE_C", "Ortam sıcaklığı [°C]", "number", ""]
+];
 
 function withTimeColumns(columns) {
   return [...TIME_COLUMNS, ...columns.filter((column) => column !== "time_s" && !TIME_COLUMNS.includes(column))];
@@ -46,6 +56,7 @@ function applyRuntimeConfiguration(configs) {
     if (key.startsWith("PFK:")) mergeSensitivitySteps(config);
     const present = new Set(config.meta.map(([field]) => field));
     for (const field of EQUIPMENT_FIELDS) if (!present.has(field[0])) config.meta.push([...field]);
+    if (key.startsWith("PFK:")) for (const field of PFK_OFFICIAL_FIELDS) if (!present.has(field[0])) config.meta.push([...field]);
   }
   return applyPfkClassicVNext(configs);
 }

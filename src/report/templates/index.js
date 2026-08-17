@@ -33,6 +33,7 @@ function campaignGroups(records, campaign, prefix, predicate, withDirections = f
     return {
       heading,
       items: [
+        { heading: `${number}.0 Genel kayıt`, recordKeys: recordKeys(unitRecords), overview: true },
         { heading: `${number}.a Δf = −200 mHz`, recordKeys: recordKeys(negativeRecords), eventId: "NEG200" },
         { heading: `${number}.b Δf = +200 mHz`, recordKeys: recordKeys(positiveRecords), eventId: "POS200" }
       ]
@@ -45,13 +46,14 @@ function reserveGroups(records, prefix, predicate) {
   return [{
     heading: `${prefix}.1 Ünite / tesis kapsamı`,
     items: [
+      { heading: `${prefix}.1.0 Genel kayıt`, stepIds: stepIds(selected), overview: true },
       { heading: `${prefix}.1.a Δf = −200 mHz`, stepIds: stepIds(selected), eventId: "NEG200" },
       { heading: `${prefix}.1.b Δf = +200 mHz`, stepIds: stepIds(selected), eventId: "POS200" }
     ]
   }];
 }
 
-function pfkReportSections(records, campaign, plant) {
+function pfkReportSections(records, campaign, plant, includeEvidenceAppendix = false) {
   const pairedReserve = plant !== "EDUEDT";
   const maximum = (record) => pairedReserve ? record.stepId === "MAKSIMUM_REZERV" : record.stepId.includes("MAX");
   const minimum = (record) => pairedReserve ? record.stepId === "MINIMUM_REZERV" : record.stepId.includes("MIN");
@@ -64,12 +66,33 @@ function pfkReportSections(records, campaign, plant) {
     { heading: "E) HASSASİYET TESTLERİ", type: campaign ? "grouped-records" : "records", groups: campaign ? campaignGroups(records, campaign, "E", (record) => record.stepId === "HASSASIYET") : undefined, stepIds: campaign ? undefined : stepIds(recordsFor(records, (record) => record.stepId === "HASSASIYET")) },
     { heading: "F) 24 SAATLİK DOĞRULAMA", type: campaign ? "grouped-records" : "records", groups: campaign ? campaignGroups(records, campaign, "F", validation) : undefined, stepIds: campaign ? undefined : stepIds(recordsFor(records, validation)) }
   ];
-  if (campaign) top.push({ heading: "PFK KAMPANYA / ÜNİTE ÖZETİ", type: "campaign-summary" });
-  top.push({ heading: "G) SONUÇ", type: "conclusion" }, { heading: "HAM CSV SHA-256 KANIT MANİFESTİ", type: "evidence" });
+  top.push({ heading: "G) SONUÇ", type: "pfk-conclusion" });
+  if (includeEvidenceAppendix) top.push({ heading: "YDA TEKNİK KANIT EKİ", type: "evidence" });
   return top;
 }
 
-function minutesSections(records) {
+function pfkMinutesGroups(records, campaign) {
+  if (campaign) return campaign.units.filter((unit) => unit.included !== false).map((unit, index) => ({
+    heading: `EK-${index + 1} ${unit.unitId} — ${unit.unitName || unit.unitId} GRAFİKLERİ`,
+    items: [{ heading: "Rezerv, hassasiyet ve 24 saat doğrulama grafik seti", recordKeys: recordKeys(recordsFor(records, (record) => record.campaign?.campaignId === campaign.campaignId && record.campaign?.unitId === unit.unitId && record.campaign?.runId === campaign.runId)) }]
+  }));
+  return [{ heading: "EK-1 ÜNİTE / TESİS GRAFİKLERİ", items: [{ heading: "Rezerv, hassasiyet ve 24 saat doğrulama grafik seti", stepIds: stepIds(records) }] }];
+}
+
+function minutesSections(records, { service, campaign, includeEvidenceAppendix = false }) {
+  if (service === "PFK") {
+    const sections = [
+      { heading: "TEST TUTANAĞI", type: "minutes" },
+      { heading: "TESİS, CİHAZLAR VE KAYIT DÜZENİ", type: "technical" },
+      { heading: "FREKANS SİMÜLASYONU VE BLOK ŞEMA", type: "pfk-simulation" },
+      { heading: "PFK AYARLARI, ÇEVRE VE DOĞRULAMA TARİHLERİ", type: "pfk-minutes-details" },
+      { heading: "UYGULANAN TESTLER VE GRAFİK EKLERİ", type: "grouped-records", groups: pfkMinutesGroups(records, campaign) },
+      { heading: "KATILIMCI / İMZA MATRİSİ", type: "participants" },
+      { heading: "SONUÇ, UYGUNSUZLUK DEĞERLENDİRMESİ VE NÜSHA TESLİMİ", type: "summary" }
+    ];
+    if (includeEvidenceAppendix) sections.push({ heading: "YDA TEKNİK KANIT EKİ", type: "evidence" });
+    return sections;
+  }
   return [
     { heading: "TEST TUTANAĞI", type: "minutes" },
     { heading: "TEKNİK VERİLER, ÖLÇÜM EKİPMANI VE KANALLAR", type: "technical" },
@@ -97,10 +120,10 @@ function rgdhSections(records, plant) {
   ];
 }
 
-export function sectionsForReport({ service, plant, reportType, records, campaign }) {
+export function sectionsForReport({ service, plant, reportType, records, campaign, includeEvidenceAppendix = false }) {
   if (reportType.includes("Sertifika")) return [{ heading: "SERTİFİKA", type: "certificate" }];
-  if (isMinutesReport(reportType)) return minutesSections(records);
-  if (service === "PFK") return pfkReportSections(records, campaign, plant);
+  if (isMinutesReport(reportType)) return minutesSections(records, { service, campaign, includeEvidenceAppendix });
+  if (service === "PFK") return pfkReportSections(records, campaign, plant, includeEvidenceAppendix);
   if (service === "RGDH") return rgdhSections(records, plant);
   if (service === "SFK") return [
     { heading: "1. GİRİŞ VE TEST KAPSAMI", type: "participants" }, { heading: "2. TEKNİK VERİLER", type: "technical" },

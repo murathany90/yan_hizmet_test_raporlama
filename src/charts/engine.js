@@ -38,9 +38,13 @@ function formatAxis(value) {
   return value.toFixed(2);
 }
 
-function usesRealTime(rows) { return rows.some((row) => Number.isFinite(row.timestamp_ms)); }
-function xValue(row) { return Number.isFinite(row.timestamp_ms) ? row.timestamp_ms : row.time_s; }
-function xKey(rows) { return usesRealTime(rows) ? "timestamp_ms" : "time_s"; }
+function usesRealTime(rows, options = {}) { return options.xMode !== "RELATIVE_SECONDS" && options.xMode !== "VALUE" && !options.xKey && rows.some((row) => Number.isFinite(row.timestamp_ms)); }
+function xValue(row, options = {}) {
+  if (options.xKey) return row[options.xKey];
+  if (options.xMode === "RELATIVE_SECONDS" || options.xMode === "VALUE") return row.time_s;
+  return Number.isFinite(row.timestamp_ms) ? row.timestamp_ms : row.time_s;
+}
+function xKey(rows, options = {}) { return options.xKey ?? (usesRealTime(rows, options) ? "timestamp_ms" : "time_s"); }
 function formatTimeAxis(value, span, realTime) {
   if (!realTime) return formatAxis(value);
   const date = new Date(value);
@@ -56,17 +60,17 @@ function dateInputValue(value) {
   return new Date(date.valueOf() - offset).toISOString().slice(0, 23);
 }
 
-function fullTimeExtent(rows) {
+function fullTimeExtent(rows, options = {}) {
   if (!rows.length) return [0, 1];
-  const minimumRow = rows.find((row) => Number.isFinite(xValue(row)));
-  const minimum = minimumRow ? xValue(minimumRow) : 0;
-  const maximumRow = [...rows].reverse().find((row) => Number.isFinite(xValue(row)));
-  const maximum = maximumRow ? xValue(maximumRow) : minimum + 1;
+  const minimumRow = rows.find((row) => Number.isFinite(xValue(row, options)));
+  const minimum = minimumRow ? xValue(minimumRow, options) : 0;
+  const maximumRow = [...rows].reverse().find((row) => Number.isFinite(xValue(row, options)));
+  const maximum = maximumRow ? xValue(maximumRow, options) : minimum + 1;
   return minimum === maximum ? [minimum, minimum + 1] : [minimum, maximum];
 }
 
-function viewFor(state, viewKey, rows) {
-  const [fullMin, fullMax] = fullTimeExtent(rows);
+function viewFor(state, viewKey, rows, options = {}) {
+  const [fullMin, fullMax] = fullTimeExtent(rows, options);
   const existing = state.chartViews.get(viewKey);
   const view = existing ?? { minimum: fullMin, maximum: fullMax, fullMin, fullMax };
   view.fullMin = fullMin;
@@ -81,8 +85,8 @@ function viewFor(state, viewKey, rows) {
   return view;
 }
 
-function dataForView(rows, series, view, maxPoints) {
-  const visible = visibleSlice(rows, view.minimum, view.maximum, xKey(rows));
+function dataForView(rows, series, view, maxPoints, options = {}) {
+  const visible = visibleSlice(rows, view.minimum, view.maximum, xKey(rows, options));
   return minMaxDownsample(visible, series.map((item) => item.key), maxPoints);
 }
 
@@ -99,8 +103,8 @@ export function drawChart(canvas, rows, series, view, options = {}) {
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, width, height);
 
-  const data = dataForView(rows, series, view, options.maxPoints ?? 4_000);
-  const realTime = usesRealTime(rows);
+  const data = dataForView(rows, series, view, options.maxPoints ?? 4_000, options);
+  const realTime = usesRealTime(rows, options);
   if (!data.length || !series.length) {
     context.fillStyle = "#526a7a";
     context.font = `${12 * pixelRatio}px Arial`;
@@ -152,18 +156,22 @@ export function drawChart(canvas, rows, series, view, options = {}) {
 
   series.forEach((item, index) => {
     context.save();
-    context.strokeStyle = COLORS[index % COLORS.length];
+    context.strokeStyle = item.color ?? COLORS[index % COLORS.length];
     context.lineWidth = 1.65 * pixelRatio;
-    context.setLineDash(/Referans|Simüle/.test(item.label) ? [6 * pixelRatio, 4 * pixelRatio] : []);
+    context.setLineDash(item.lineStyle === "dashed" || /Referans|Simüle/.test(item.label) ? [6 * pixelRatio, 4 * pixelRatio] : []);
     context.beginPath();
     let started = false;
     for (const row of data) {
-      const rowX = xValue(row);
+      const rowX = xValue(row, options);
       const yValue = row[item.key];
       if (!Number.isFinite(rowX) || !Number.isFinite(yValue)) { started = false; continue; }
       const px = x(rowX);
       const py = (item.axis === "right" ? yRight : yLeft)(yValue);
-      if (!started) {
+      if (options.chartType === "scatter") {
+        context.moveTo(px + 1.5 * pixelRatio, py);
+        context.arc(px, py, 1.5 * pixelRatio, 0, Math.PI * 2);
+        started = true;
+      } else if (!started) {
         context.moveTo(px, py);
         started = true;
       } else context.lineTo(px, py);
@@ -172,11 +180,31 @@ export function drawChart(canvas, rows, series, view, options = {}) {
     context.restore();
   });
 
+  for (const marker of options.markers ?? []) {
+    if (!Number.isFinite(marker?.value) || marker.value < view.minimum || marker.value > view.maximum) continue;
+    const position = x(marker.value);
+    context.save();
+    context.strokeStyle = "#6d7780";
+    context.lineWidth = pixelRatio;
+    context.setLineDash([3 * pixelRatio, 3 * pixelRatio]);
+    context.beginPath();
+    context.moveTo(position, marginTop);
+    context.lineTo(position, height - marginBottom);
+    context.stroke();
+    context.setLineDash([]);
+    context.fillStyle = "#465660";
+    context.font = `${9 * pixelRatio}px Arial`;
+    context.textAlign = "center";
+    context.textBaseline = "bottom";
+    context.fillText(marker.label, position, marginTop - 3 * pixelRatio);
+    context.restore();
+  }
+
   context.fillStyle = "#314f61";
   context.font = `${10 * pixelRatio}px Arial`;
   context.textAlign = "center";
   context.textBaseline = "bottom";
-  context.fillText(realTime ? "Gerçek zaman" : "Zaman [s]", marginLeft + plotWidth / 2, height - 2 * pixelRatio);
+  context.fillText(realTime ? "Gerçek zaman" : options.xMode === "VALUE" ? "Frekans [Hz]" : "Zaman [s]", marginLeft + plotWidth / 2, height - 2 * pixelRatio);
   context.save();
   context.translate(12 * pixelRatio, marginTop + plotHeight / 2);
   context.rotate(-Math.PI / 2);
@@ -195,8 +223,8 @@ function svgEscape(value) {
   return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
 
-export function chartToSvg(rows, series, view, title, width = 1200, height = 600) {
-  const data = dataForView(rows, series, view, 6_000);
+export function chartToSvg(rows, series, view, title, width = 1200, height = 600, options = {}) {
+  const data = dataForView(rows, series, view, 6_000, options);
   const leftSeries = series.filter((item) => item.axis !== "right");
   const rightSeries = series.filter((item) => item.axis === "right");
   const [leftMin, leftMax] = paddedExtent(data, leftSeries);
@@ -214,14 +242,17 @@ export function chartToSvg(rows, series, view, title, width = 1200, height = 600
     const y = top + (index * plotHeight) / 5;
     return `<line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" stroke="#dce5ea"/><text x="${left - 8}" y="${y + 4}" text-anchor="end">${formatAxis(leftMax - ((leftMax - leftMin) * index) / 5)}</text>`;
   }).join("");
-  const realTime = usesRealTime(rows);
+  const realTime = usesRealTime(rows, options);
   const paths = series.map((item, index) => {
-    const points = data.filter((row) => Number.isFinite(xValue(row)) && Number.isFinite(row[item.key])).map((row) => `${x(xValue(row)).toFixed(2)},${(item.axis === "right" ? yRight : yLeft)(row[item.key]).toFixed(2)}`).join(" ");
-    return `<polyline points="${points}" fill="none" stroke="${COLORS[index % COLORS.length]}" stroke-width="2"/>`;
+    const points = data.filter((row) => Number.isFinite(xValue(row, options)) && Number.isFinite(row[item.key])).map((row) => `${x(xValue(row, options)).toFixed(2)},${(item.axis === "right" ? yRight : yLeft)(row[item.key]).toFixed(2)}`).join(" ");
+    const color = item.color ?? COLORS[index % COLORS.length];
+    return options.chartType === "scatter"
+      ? data.filter((row) => Number.isFinite(xValue(row, options)) && Number.isFinite(row[item.key])).map((row) => `<circle cx="${x(xValue(row, options)).toFixed(2)}" cy="${(item.axis === "right" ? yRight : yLeft)(row[item.key]).toFixed(2)}" r="1.5" fill="${color}"/>`).join("")
+      : `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="2"${item.lineStyle === "dashed" ? ' stroke-dasharray="7 5"' : ""}/>`;
   }).join("");
-  const legend = series.map((item, index) => `<text x="${left + index * 190}" y="${height - 14}" fill="${COLORS[index % COLORS.length]}">${svgEscape(item.label)} [${svgEscape(item.unit)}]</text>`).join("");
+  const legend = series.map((item, index) => `<text x="${left + index * 190}" y="${height - 14}" fill="${item.color ?? COLORS[index % COLORS.length]}">${svgEscape(item.label)} [${svgEscape(item.unit)}]</text>`).join("");
   const labels = Array.from({ length: 6 }, (_, index) => `<text x="${x(view.minimum + ((view.maximum - view.minimum) * index) / 5)}" y="${height - 42}" text-anchor="middle">${svgEscape(formatTimeAxis(view.minimum + ((view.maximum - view.minimum) * index) / 5, view.maximum - view.minimum, realTime))}</text>`).join("");
-  return `<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#fff"/><g font-family="Arial" font-size="12" fill="#526a7a"><text x="${width / 2}" y="24" text-anchor="middle" font-size="16" font-weight="700" fill="#244b64">${svgEscape(title)}</text>${grid}${paths}${labels}<text x="${left + plotWidth / 2}" y="${height - 18}" text-anchor="middle">${realTime ? "Gerçek zaman" : "Zaman [s]"}</text>${legend}</g></svg>`;
+  return `<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#fff"/><g font-family="Arial" font-size="12" fill="#526a7a"><text x="${width / 2}" y="24" text-anchor="middle" font-size="16" font-weight="700" fill="#244b64">${svgEscape(title)}</text>${grid}${paths}${labels}<text x="${left + plotWidth / 2}" y="${height - 18}" text-anchor="middle">${realTime ? "Gerçek zaman" : options.xMode === "VALUE" ? "Frekans [Hz]" : "Zaman [s]"}</text>${legend}</g></svg>`;
 }
 
 function button(label, action, title = label) {
@@ -262,7 +293,7 @@ export class ChartManager {
       this.frames.delete(viewKey);
       const entry = this.registry.get(viewKey);
       if (!entry || !entry.details.open) return;
-      drawChart(entry.canvas, entry.rows, this.visibleSeries(viewKey, entry.series), viewFor(this.state, viewKey, entry.rows));
+      drawChart(entry.canvas, entry.rows, this.visibleSeries(viewKey, entry.series), viewFor(this.state, viewKey, entry.rows, entry.options), entry.options);
       const view = this.state.chartViews.get(viewKey);
       entry.minimumInput.value = entry.realTime ? dateInputValue(view.minimum) : String(view.minimum);
       entry.maximumInput.value = entry.realTime ? dateInputValue(view.maximum) : String(view.maximum);
@@ -282,8 +313,9 @@ export class ChartManager {
       const viewKey = `${modeKey}:${record.step.id}:${index}`;
       const rows = set.rows ?? record.rows;
       const series = normalizeSeries(set.series);
-      const view = viewFor(this.state, viewKey, rows);
-      const realTime = usesRealTime(rows);
+      const options = { xMode: set.xMode, xKey: set.xKey, chartType: set.chartType, markers: set.markers };
+      const view = viewFor(this.state, viewKey, rows, options);
+      const realTime = usesRealTime(rows, options);
       if (!this.state.chartOpenState.has(viewKey)) this.state.chartOpenState.set(viewKey, true);
 
       const details = document.createElement("details");
@@ -330,7 +362,7 @@ export class ChartManager {
         const legendItem = document.createElement("button");
         legendItem.type = "button";
         legendItem.className = "legend-item";
-        legendItem.style.setProperty("--series-color", COLORS[seriesIndex % COLORS.length]);
+        legendItem.style.setProperty("--series-color", item.color ?? COLORS[seriesIndex % COLORS.length]);
         legendItem.textContent = `${item.label} [${item.unit}]`;
         legendItem.dataset.seriesKey = seriesKey;
         legendItem.setAttribute("aria-pressed", String(this.state.chartSeriesVisibility.get(seriesKey) !== false));
@@ -348,7 +380,7 @@ export class ChartManager {
       details.append(summary, inner);
       container.append(details);
 
-      const registryEntry = { details, canvas, record, rows, series, title: set.title, minimumInput, maximumInput, realTime };
+      const registryEntry = { details, canvas, record, rows, series, title: set.title, minimumInput, maximumInput, realTime, options };
       this.registry.set(viewKey, registryEntry);
       this.resizeObserver.observe(inner);
       details.addEventListener("toggle", () => {
@@ -358,7 +390,7 @@ export class ChartManager {
       toolbar.addEventListener("click", async (event) => {
         const action = event.target.closest("button")?.dataset.chartAction;
         if (!action) return;
-        const currentView = viewFor(this.state, viewKey, rows);
+        const currentView = viewFor(this.state, viewKey, rows, options);
         if (action === "zoom-in" || action === "zoom-out") {
           const factor = action === "zoom-in" ? 0.65 : 1.55;
           this.adjustView(currentView, factor, 0.5);
@@ -378,7 +410,7 @@ export class ChartManager {
         } else if (action === "png") {
           canvas.toBlob((blob) => blob && this.onDownload(blob, `${safeFilename(record.name)}-${index + 1}.png`), "image/png");
         } else if (action === "svg") {
-          const svg = chartToSvg(rows, this.visibleSeries(viewKey, series), currentView, set.title);
+          const svg = chartToSvg(rows, this.visibleSeries(viewKey, series), currentView, set.title, 1200, 600, options);
           await this.onDownload(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }), `${safeFilename(record.name)}-${index + 1}.svg`);
         }
       });
@@ -387,22 +419,22 @@ export class ChartManager {
         event.preventDefault();
         const rectangle = canvas.getBoundingClientRect();
         const ratio = Math.max(0, Math.min(1, (event.clientX - rectangle.left) / rectangle.width));
-        this.adjustView(viewFor(this.state, viewKey, rows), event.deltaY < 0 ? 0.65 : 1.55, ratio);
+        this.adjustView(viewFor(this.state, viewKey, rows, options), event.deltaY < 0 ? 0.65 : 1.55, ratio);
         this.scheduleDraw(viewKey);
       }, { passive: false });
 
       canvas.addEventListener("pointermove", (event) => {
         const rectangle = canvas.getBoundingClientRect();
-        const currentView = viewFor(this.state, viewKey, rows);
+        const currentView = viewFor(this.state, viewKey, rows, options);
         const target = currentView.minimum + ((event.clientX - rectangle.left) / rectangle.width) * (currentView.maximum - currentView.minimum);
         let nearest = null;
         for (const row of rows) {
-          if (!Number.isFinite(xValue(row))) continue;
-          if (!nearest || Math.abs(xValue(row) - target) < Math.abs(xValue(nearest) - target)) nearest = row;
+          if (!Number.isFinite(xValue(row, options))) continue;
+          if (!nearest || Math.abs(xValue(row, options) - target) < Math.abs(xValue(nearest, options) - target)) nearest = row;
         }
         if (!nearest) return;
         const values = this.visibleSeries(viewKey, series).filter((item) => Number.isFinite(nearest[item.key])).map((item) => `${item.label}: ${formatAxis(nearest[item.key])} ${item.unit}`);
-        tooltip.textContent = `Zaman: ${nearest.zaman || formatTimeAxis(xValue(nearest), currentView.maximum - currentView.minimum, realTime)}\nSıra No: ${nearest.sira_no ?? "—"}${values.length ? `\n${values.join("\n")}` : ""}`;
+        tooltip.textContent = `${options.xMode === "VALUE" ? "Frekans" : "Zaman"}: ${options.xMode === "VALUE" ? formatAxis(xValue(nearest, options)) : nearest.zaman || formatTimeAxis(xValue(nearest, options), currentView.maximum - currentView.minimum, realTime)}\nSıra No: ${nearest.sira_no ?? "—"}${values.length ? `\n${values.join("\n")}` : ""}`;
         tooltip.hidden = false;
       });
       canvas.addEventListener("pointerleave", () => { tooltip.hidden = true; });
@@ -414,7 +446,7 @@ export class ChartManager {
       canvas.addEventListener("pointerdown", (event) => {
         dragging = true;
         startX = event.clientX;
-        const currentView = viewFor(this.state, viewKey, rows);
+        const currentView = viewFor(this.state, viewKey, rows, options);
         startMinimum = currentView.minimum;
         startMaximum = currentView.maximum;
         canvas.setPointerCapture(event.pointerId);
@@ -422,7 +454,7 @@ export class ChartManager {
       });
       canvas.addEventListener("pointermove", (event) => {
         if (!dragging) return;
-        const currentView = viewFor(this.state, viewKey, rows);
+        const currentView = viewFor(this.state, viewKey, rows, options);
         const span = startMaximum - startMinimum;
         let minimum = startMinimum - ((event.clientX - startX) / canvas.getBoundingClientRect().width) * span;
         let maximum = minimum + span;
@@ -474,10 +506,11 @@ export class ChartManager {
     return (record.seriesSets ?? seriesSetsFor(record, service)).map((set) => {
       const series = normalizeSeries(set.series);
       const rows = set.rows ?? record.rows;
-      const [fullMin, fullMax] = fullTimeExtent(rows);
+      const options = { xMode: set.xMode, xKey: set.xKey, chartType: set.chartType, markers: set.markers };
+      const [fullMin, fullMax] = fullTimeExtent(rows, options);
       const view = { minimum: fullMin, maximum: fullMax, fullMin, fullMax };
       const canvas = document.createElement("canvas");
-      drawChart(canvas, rows, series, view, { width: 1100, height: 400, pixelRatio: 1, maxPoints: 6_000 });
+      drawChart(canvas, rows, series, view, { ...options, width: 1100, height: 400, pixelRatio: 1, maxPoints: 6_000 });
       return { title: set.title, dataUrl: canvas.toDataURL("image/png") };
     });
   }

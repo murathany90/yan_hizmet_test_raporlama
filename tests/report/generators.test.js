@@ -7,7 +7,7 @@ import { DEFAULT_DOCUMENT_SETTINGS } from "../../src/app/settings.js";
 import { renderReportPreview } from "../../src/report/preview.js";
 import { strFromU8, unzipSync } from "fflate";
 
-function fixtureModel() {
+function fixtureModel(settings) {
   const config = CONFIGS["PFK:HES"];
   const step = config.steps[0];
   return buildReportModel({
@@ -17,6 +17,7 @@ function fixtureModel() {
     metadata: { TESIS_ADI: "İğdır Şaşı Üretim Tesisi", UNIT_ID: "Ü1", TEST_DATE: "2026-08-16", REPORT_NO: "YHDA-006", TEST_TEAM: "TEİAŞ / Tesis" },
     reportType: "Performans Test Raporu",
     reportNote: "Türkçe karakter, değişken ve imza alanı doğrulaması.",
+    settings,
     records: [{
       name: "örnek.csv",
       step,
@@ -58,7 +59,7 @@ describe("report generators", () => {
     expect(byHeading("F)")).toEqual(["VCTRL_PLUS1", "VCTRL_MINUS1"]);
   });
 
-  it("creates a PFK campaign model with unit summary and guarded official status", () => {
+  it("keeps PFK campaign summary and evidence outside the default official body", () => {
     const config = CONFIGS["PFK:HES"];
     const model = buildReportModel({
       service: "PFK", plant: "HES", config, metadata: { PLANT_TOTAL_INSTALLED_MW: "100" }, reportType: "Performans Test Raporu", reportNote: "", chartProvider: () => [],
@@ -67,7 +68,8 @@ describe("report generators", () => {
     });
     expect(model.campaignSummary.units).toHaveLength(2);
     expect(model.officialStatus).toBe("TASLAK / EKSİK BİLGİ");
-    expect(model.sections.map((section) => section.type)).toContain("campaign-summary");
+    expect(model.sections.map((section) => section.type)).not.toContain("campaign-summary");
+    expect(model.sections.map((section) => section.type)).not.toContain("evidence");
   });
 
   it("keeps PFK campaign report records scoped by campaign, unit, step and run", () => {
@@ -126,6 +128,9 @@ describe("report generators", () => {
     const minutes = buildReportModel({ service: "PFK", plant: "HES", config, metadata: {}, reportType: "Test Tutanağı", reportNote: "", settings, records: [record], chartProvider: () => [] });
     const reportPreview = renderReportPreview(report);
     const minutesPreview = renderReportPreview(minutes);
+    expect(report.figureProfile).toBe("OFFICIAL_TEIAS_PFK_REPORT");
+    expect(minutes.figureProfile).toBe("OFFICIAL_TEIAS_PFK_MINUTES");
+    expect(minutes.sections.map((section) => section.type)).toEqual(expect.arrayContaining(["pfk-simulation", "pfk-minutes-details", "grouped-records"]));
     expect(reportPreview).toContain("SADECE RAPOR GİRİŞİ");
     expect(reportPreview).toContain("RAPOR NİHAİ SONUCU");
     expect(reportPreview).not.toContain("SADECE TUTANAK BAŞLANGICI");
@@ -136,9 +141,11 @@ describe("report generators", () => {
     expect(minutesPdf).toContain("TUTANAK SONUCU");
     expect(minutesPdf).not.toContain("SADECE RAPOR GİRİŞİ");
     const docx = await createDocxBuffer(minutes);
-    const documentXml = strFromU8(unzipSync(docx)["word/document.xml"]);
+    const archive = unzipSync(docx);
+    const documentXml = strFromU8(archive["word/document.xml"]);
     expect(documentXml).toContain("TUTANAK SONUCU");
     expect(documentXml).not.toContain("SADECE RAPOR GİRİŞİ");
+    expect(Object.keys(archive).some((path) => path.endsWith(".svg"))).toBe(true);
   }, 30_000);
 
   it("creates a real PDF binary", async () => {
@@ -156,7 +163,7 @@ describe("report generators", () => {
   }, 30_000);
 
   it("creates a browser DOCX Blob with a real Word VML watermark", async () => {
-    const blob = await createDocxBlob(fixtureModel());
+    const blob = await createDocxBlob(fixtureModel({ ...DEFAULT_DOCUMENT_SETTINGS, showPfkOfficialWatermark: true }));
     expect(blob.type).toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     const archive = unzipSync(new Uint8Array(await blob.arrayBuffer()));
     const headerXml = strFromU8(archive["word/header1.xml"]);

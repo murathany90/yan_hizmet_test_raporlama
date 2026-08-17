@@ -2,6 +2,7 @@ import { dataUrlToUint8Array } from "../utils/text.js";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { isMinutesReport } from "../app/settings.js";
 import { recordsForReportSection } from "./record-selection.js";
+import { pfkMinutesDetails as officialPfkMinutesDetails, pfkSimulationSvg } from "./pfk-official.js";
 
 const A4_WIDTH = 11906;
 const A4_HEIGHT = 16838;
@@ -12,6 +13,7 @@ const DARK = "063F68";
 const LIGHT = "EAF2F7";
 const LINE = "D5E0E7";
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const TRANSPARENT_PNG_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL9hAAAAABJRU5ErkJggg==";
 
 function escapeXml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[character]);
@@ -43,7 +45,12 @@ export async function buildDocxDocument(model) {
   const certificateReserveRows = () => model.records.flatMap((record) => record.events?.length
     ? record.events.map((event) => ({ ...record, name: `${record.name} — ${event.label}`, status: event.status, metrics: { ...event.metrics, delaySeconds: event.metrics.delaySeconds, durationSeconds: event.metrics.sustainSeconds, trpA: event.metrics.trp?.TRP_A?.percentage, trpB: event.metrics.trp?.TRP_B?.percentage, trpC: event.metrics.trp?.TRP_C?.percentage } }))
     : (record.stepId.includes("NEG200") || record.stepId.includes("POS200") ? [record] : []));
-  const summaryTable = (records) => makeTable(["Test adımı", "CSV", "Durum", "Hesap / not"], records.map((record) => [record.name, record.filename, record.status, record.detail]), [2400, 1800, 1100, TABLE_WIDTH - 5300], 13);
+  const metric = (value, digits = 3) => Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : "—";
+  const reserveSummaryTable = (records) => makeTable(["Olay", "Pnom", "Pset", "ΔP", "Δtd", "Etkin.", "TRP A", "TRP B", "TRP C", "Sonuç"], records.map((record) => { const metrics = record.metrics ?? {}; const trp = metrics.trp ?? {}; return [record.label || record.name, metric(metrics.pNomMw), metric(metrics.pSetMw), metric(metrics.deltaPowerMw), metric(metrics.deltaTdSeconds), metric(metrics.officialActivationTimeSeconds), metric(trp.TRP_A?.percentage), metric(trp.TRP_B?.percentage), metric(trp.TRP_C?.percentage), record.status]; }), [1800, 550, 550, 550, 520, 620, 520, 520, 520, TABLE_WIDTH - 6150], 9);
+  const summaryTable = (records) => records.length && records.every((record) => record.eventId && record.metrics?.trp)
+    ? reserveSummaryTable(records)
+    : makeTable(["Test adımı", "CSV", "Durum", "Hesap / not"], records.map((record) => [record.name, record.filename, record.status, record.detail]), [2400, 1800, 1100, TABLE_WIDTH - 5300], 13);
+  const reserveChecklist = (record) => { const metrics = record.metrics ?? {}; const trp = metrics.trp ?? {}; return makeTable(["Resmî kontrol", "Ölçülen", "Sonuç"], [["100 ms kayıt", `${metric(metrics.sampleMs, 0)} ms`, Number(metrics.sampleMs) <= 102 ? "OLUMLU" : "OLUMSUZ"], ["Δtd", `${metric(metrics.deltaTdSeconds)} s`, Number(metrics.deltaTdSeconds) <= 4 ? "OLUMLU" : "OLUMSUZ"], ["t50 / t100", `${metric(metrics.t50Seconds)} / ${metric(metrics.t100Seconds)} s`, Number(metrics.t50Seconds) <= 15 && Number(metrics.t100Seconds) <= 30 ? "OLUMLU" : "OLUMSUZ"], ["Etkinleştirme", `${metric(metrics.officialActivationTimeSeconds)} s`, Number(metrics.officialActivationTimeSeconds) <= 30 ? "OLUMLU" : "OLUMSUZ"], ["Sürdürme", `${metric(metrics.sustainSeconds, 1)} s`, Number(metrics.sustainSeconds) >= 900 ? "OLUMLU" : "OLUMSUZ"], ["TRP A/B/C", `${metric(trp.TRP_A?.percentage)} / ${metric(trp.TRP_B?.percentage)} / ${metric(trp.TRP_C?.percentage)} %`, Number(trp.TRP_A?.percentage) >= 90 && Number(trp.TRP_B?.percentage) >= 90 && Number(trp.TRP_C?.percentage) >= 90 ? "OLUMLU" : "OLUMSUZ"]], [2200, TABLE_WIDTH - 3500, 1300], 10); };
   const technical = () => [
     paragraph(model.documentText.technicalData, { size: 15 }),
     paragraph("Ölçüm ekipmanı ve kalibrasyon", { bold: true, size: 16, after: 55 }),
@@ -55,24 +62,37 @@ export async function buildDocxDocument(model) {
   const charts = (records) => records.flatMap((record) => record.charts.flatMap((chart) => [paragraph(`${record.name} — ${chart.title}`, { bold: true, size: 15, before: 80, after: 45 }), new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 110 }, children: [new ImageRun({ data: dataUrlToUint8Array(chart.dataUrl), transformation: { width: 510, height: 184 }, type: "png" })] })]));
   const grouped = (section) => section.groups.flatMap((group) => {
     const items = group.items ?? [group];
-    return [heading(group.heading, HeadingLevel.HEADING_2), ...items.flatMap((item) => { const records = selected(item); return [...(group.items ? [paragraph(item.heading, { bold: true, size: 16, after: 45 })] : []), summaryTable(records), ...charts(records)]; })];
+    return [heading(group.heading, HeadingLevel.HEADING_2), ...items.flatMap((item) => { const records = selected(item); return [...(group.items ? [paragraph(item.heading, { bold: true, size: 16, after: 45 })] : []), summaryTable(records), ...(records.length && records.every((record) => record.eventId && record.metrics?.trp) ? records.flatMap((record) => [paragraph(`${record.name} — resmî kontrol listesi`, { bold: true, size: 14 }), reserveChecklist(record)]) : []), ...charts(records)]; })];
   });
-  const participants = () => [makeTable(["Alan", "Değer"], [["Test ekibi / katılımcılar", model.metadata.TEST_TEAM || "—"], ["Raporu hazırlayan", model.metadata.REPORT_PREPARED_BY || "—"]], [2200, TABLE_WIDTH - 2200], 14)];
+  const participants = () => [makeTable(["Ad Soyad", "Kurum", "Ünvan", "Rol", "İmza"], model.participants.map((participant) => [participant.name, participant.company, participant.title, participant.role, participant.signature]), [2100, 2100, 1800, 1800, TABLE_WIDTH - 7800], 11)];
   const campaign = () => model.campaignSummary ? [makeTable(["Ünite", "Pnom", "RPmax", "Yüklenen / beklenen", "Son P", "Beklenen P", "Durum"], model.campaignSummary.units.map((unit) => [`${unit.unitId} — ${unit.unitName}`, unit.pnomMw, unit.rpmaxMw, `${unit.loadedSteps} / ${unit.expectedSteps}`, Number.isFinite(unit.activePowerMw) ? unit.activePowerMw.toFixed(3) : "—", Number.isFinite(unit.expectedPowerMw) ? unit.expectedPowerMw.toFixed(3) : "—", unit.status]), [2050, 650, 650, 1100, 800, 900, TABLE_WIDTH - 6150], 11), paragraph(`Santral toplam P: ${model.campaignSummary.totalActivePowerMw.toFixed(3)} MW | Beklenen P: ${model.campaignSummary.expectedPowerMw.toFixed(3)} MW | Fark: ${model.campaignSummary.expectedPowerDifferenceMw.toFixed(3)} MW`, { size: 14 })] : [];
   const minutes = () => [paragraph(model.documentText.minutesIntroduction, { size: 16 }), paragraph(model.documentText.operationSafety, { size: 16 }), paragraph(model.documentText.testMethod, { size: 16 }), makeTable(["Santral / ünite detayı", "Değer"], [["Türbin / jeneratör", model.metadata.TURBINE_GENERATOR_DESCRIPTION || "—"], ["Nominal güç", `${model.metadata.PNOM_MW || "—"} MW`], ["Frekans simülasyonu", model.metadata.SIGNAL_GENERATOR || "—"], ["İşletme modu", model.metadata.UNIT_OPERATION_MODE || model.metadata.PFK_OPERATION_MODE || "—"]], [2200, TABLE_WIDTH - 2200], 14)];
+  const pfkSimulation = () => [
+    paragraph("Şebeke frekansı ve kontrollü test sinyali, kayıt altındaki simülasyon yöntemiyle birleştirilerek hız regülatörü girişine uygulanır. Referans frekans ayrı izlenir.", { size: 15 }),
+    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 110 }, children: [new ImageRun({
+      data: new TextEncoder().encode(pfkSimulationSvg()), type: "svg", fallback: { data: dataUrlToUint8Array(TRANSPARENT_PNG_DATA_URL), type: "png" },
+      transformation: { width: 510, height: 135 }, altText: { title: "PFK frekans simülasyonu blok şeması", description: "f_şebeke ve test sinyalinden hız regülatörüne PFK simülasyon yolu" }
+    })] }),
+    makeTable(["f_şebeke + Test Sinyali", "Simülasyon yöntemi", "f_simüle", "Hız regülatörü"], [["Giriş", model.metadata.SIGNAL_GENERATOR || "Kayıtlı yöntem", "Toplama noktası / f_ref", "PFK cevabı"]], [2200, 2400, 2000, TABLE_WIDTH - 6600], 12)
+  ];
+  const pfkMinutesDetailsContent = () => [makeTable(["Bilgi", "Değer"], officialPfkMinutesDetails(model), [2600, TABLE_WIDTH - 2600], 12)];
   const summary = (section) => {
     const isMinutes = isMinutesReport(model.reportType);
     return [paragraph(isMinutes ? model.documentText.minutesResult : model.documentText.reportConclusion, { size: 16 }), paragraph(`Otomatik değerlendirme: ${model.overallStatus} | Resmî çıktı statüsü: ${model.officialStatus}`, { bold: true, size: 15 }), summaryTable(model.records), ...(isMinutes && section.heading.includes("TESLİM") ? [paragraph(model.documentText.copyDelivery, { size: 15 })] : [])];
   };
   const evaluation = () => [paragraph(model.documentText.testResult, { size: 16 }), paragraph(`Test sonuçları; hedef/ölçülen değerler, ortalama, kararlılık ve kabul kriterleri üzerinden değerlendirilmiştir. Otomatik değerlendirme: ${model.overallStatus}.`, { size: 15 }), summaryTable(model.records)];
   const conclusion = () => [paragraph(model.documentText.reportConclusion, { size: 16 }), paragraph(`Nihai sonuç: ${model.overallStatus}`, { bold: true, size: 17, color: model.overallStatus === "GEÇTİ" ? "19724F" : "9B1C1C" })];
+  const pfkConclusion = () => [paragraph("Primer Frekans Kontrol Performans Testleri Özet Tablosu", { bold: true, size: 16 }), reserveSummaryTable(certificateReserveRows()), paragraph("Primer Frekans Kontrol Performans Testleri Sonuç Tablosu", { bold: true, size: 16 }), makeTable(["Teknik değerlendirme", "Belge tamlığı", "Açıklama"], [[model.evaluationStatus, model.documentStatus, "Teknik kabul ve belge tamlığı ayrı izlenir."]], [2200, 2200, TABLE_WIDTH - 4400], 13), paragraph(model.documentText.reportConclusion, { size: 15 })];
   const sectionContent = (section) => {
     if (section.type === "participants") return participants();
     if (section.type === "technical") return technical();
     if (section.type === "minutes") return minutes();
+    if (section.type === "pfk-simulation") return pfkSimulation();
+    if (section.type === "pfk-minutes-details") return pfkMinutesDetailsContent();
     if (section.type === "campaign-summary") return campaign();
     if (section.type === "evidence") return evidence();
     if (section.type === "evaluation") return evaluation();
+    if (section.type === "pfk-conclusion") return pfkConclusion();
     if (section.type === "conclusion") return conclusion();
     if (section.type === "summary") return summary(section);
     if (section.type === "grouped-records") return grouped(section);
@@ -93,7 +113,7 @@ export async function buildDocxDocument(model) {
       paragraph(model.documentText.draftWarning || "İMZA ÖNCESİ / TASLAK", { alignment: AlignmentType.CENTER, bold: true, color: "8A5700", size: 18, before: 180 }),
       new Paragraph({ children: [new PageBreak()] }),
       paragraph("SONUÇ TABLOSU", { alignment: AlignmentType.CENTER, bold: true, size: 26, color: DARK, after: 150 }),
-      makeTable(["Test", "Pnom", "Pset", "ΔP", "Etkinleşme s", "Sürdürme s", "TRP A", "TRP B", "TRP C", "Ölü bant", "Sonuç"], reserve.map((record) => [record.name, model.metadata.PNOM_MW || "—", record.stepId.includes("MAX") ? model.metadata.PSET_MAX_MW || "—" : model.metadata.PSET_MIN_MW || "—", model.metadata.RPMAX_MW || "—", Number.isFinite(record.metrics.delaySeconds) ? record.metrics.delaySeconds.toFixed(2) : "—", Number.isFinite(record.metrics.durationSeconds) ? record.metrics.durationSeconds.toFixed(1) : "—", Number.isFinite(record.metrics.trpA) ? record.metrics.trpA.toFixed(1) : "—", Number.isFinite(record.metrics.trpB) ? record.metrics.trpB.toFixed(1) : "—", Number.isFinite(record.metrics.trpC) ? record.metrics.trpC.toFixed(1) : "—", model.metadata.DEADBAND_MHZ || "—", record.status]), [1500, 500, 500, 500, 700, 700, 500, 500, 500, 500, TABLE_WIDTH - 6900], 9),
+      makeTable(["Test", "Pnom", "Pset", "ΔP", "Etkinleşme s", "Sürdürme s", "TRP A", "TRP B", "TRP C", "Ölü bant", "Sonuç"], reserve.map((record) => [record.name, metric(record.metrics.pNomMw), metric(record.metrics.pSetMw), metric(record.metrics.deltaPowerMw), metric(record.metrics.officialActivationTimeSeconds), metric(record.metrics.sustainSeconds, 1), metric(record.metrics.trp?.TRP_A?.percentage), metric(record.metrics.trp?.TRP_B?.percentage), metric(record.metrics.trp?.TRP_C?.percentage), record.metadata?.DEADBAND_MHZ || model.metadata.DEADBAND_MHZ || "—", record.status]), [1500, 500, 500, 500, 700, 700, 500, 500, 500, 500, TABLE_WIDTH - 6900], 9),
       paragraph(model.documentText.certificateResult, { size: 16, line: 295, before: 130 }), paragraph(model.documentText.certificateValidityText, { size: 16, line: 295 }), paragraph(`Düzenlenme tarihi: ${new Date().toLocaleDateString("tr-TR")}`, { size: 15 }),
       new Table({ width: { size: TABLE_WIDTH, type: WidthType.DXA }, columnWidths: model.signatures.map(() => Math.floor(TABLE_WIDTH / model.signatures.length)), borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE }, insideHorizontal: { style: BorderStyle.NONE }, insideVertical: { style: BorderStyle.NONE } }, rows: [new TableRow({ children: model.signatures.map((signature) => cell(`\n\n______________________\n${signature.role}\n${signature.name}`, Math.floor(TABLE_WIDTH / model.signatures.length), { size: 13, alignment: AlignmentType.CENTER })) })] }),
       paragraph(model.documentText.draftWarning || "İMZA ÖNCESİ / TASLAK", { alignment: AlignmentType.CENTER, bold: true, color: "8A5700", size: 17, before: 160 })
@@ -111,12 +131,16 @@ export async function buildDocxDocument(model) {
   const children = model.reportType.includes("Sertifika") ? certificate() : [
     ...cover, heading("İÇİNDEKİLER"), new Paragraph({ children: model.sections.filter((section) => section.type !== "evidence").map((section) => new TextRun({ text: `${section.heading}\n`, size: 17, font: "Arial" })) }),
     heading("YÜKLEME VE TAMLIK DURUMU"), paragraph(model.missingSteps.length ? `Eksik test adımları: ${model.missingSteps.map((step) => step.stepId).join(", ")}` : `Beklenen ${model.expectedStepCount} test adımının tamamı yüklendi.`, { bold: true, color: model.missingSteps.length ? "9B1C1C" : "19724F", size: 16 }), ...(isMinutes ? [] : [paragraph(model.documentText.reportIntroduction, { size: 16 })]), paragraph(model.reportNote, { size: 15 }),
-    ...model.sections.flatMap((section) => [heading(section.heading), ...sectionContent(section)]),
+    ...model.sections.flatMap((section, index) => [
+      ...(model.figureProfile?.startsWith("OFFICIAL_TEIAS_PFK") && index > 0 ? [new Paragraph({ children: [new PageBreak()] })] : []),
+      heading(section.heading),
+      ...sectionContent(section)
+    ]),
     heading("İMZA ALANLARI"), new Table({ width: { size: TABLE_WIDTH, type: WidthType.DXA }, columnWidths: model.signatures.map(() => Math.floor(TABLE_WIDTH / model.signatures.length)), borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE }, insideHorizontal: { style: BorderStyle.NONE }, insideVertical: { style: BorderStyle.NONE } }, rows: [new TableRow({ children: model.signatures.map((signature) => cell(`\n\n________________________\n${signature.role}\n${signature.name}`, Math.floor(TABLE_WIDTH / model.signatures.length), { alignment: AlignmentType.CENTER, size: 14 })) })] })
   ];
   const header = new Header({ children: [paragraph(`${model.settings.reportHeader || "YDA"}${model.watermark ? "   |   TEİAŞ" : ""}`, { size: 13, color: "637585", after: 0 })] });
   const footer = new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `${model.settings.reportFooter || "YDA"} | Sayfa `, size: 13, color: "637585", font: "Arial" }), new TextRun({ children: [PageNumber.CURRENT], size: 13, color: "637585", font: "Arial" }), new TextRun({ text: "/", size: 13, color: "637585", font: "Arial" }), new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 13, color: "637585", font: "Arial" })] })] });
-  return new Document({ creator: "YDA (Yan Hizmetler Doğrulama Aracı)", title: model.title, description: model.reportType, styles: { default: { document: { run: { font: "Arial", size: 18, color: "172630" }, paragraph: { spacing: { after: 100, line: 276 } } } }, paragraphStyles: [{ id: "Heading1", name: "Heading 1", basedOn: "Normal", next: "Normal", quickFormat: true, run: { font: "Arial", size: 21, bold: true, color: DARK }, paragraph: { spacing: { before: 180, after: 90 }, outlineLevel: 0 } }, { id: "Heading2", name: "Heading 2", basedOn: "Normal", next: "Normal", quickFormat: true, run: { font: "Arial", size: 18, bold: true, color: BLUE }, paragraph: { spacing: { before: 140, after: 70 }, outlineLevel: 1 } }] }, sections: [{ properties: { page: { size: { width: A4_WIDTH, height: A4_HEIGHT }, margin: { top: PAGE_MARGIN, right: PAGE_MARGIN, bottom: PAGE_MARGIN, left: PAGE_MARGIN, header: 620, footer: 620 } } }, headers: { default: header }, footers: { default: footer }, children }] });
+  return new Document({ creator: "YDA (Yan Hizmetler Testleri Doğrulama Aracı)", title: model.title, description: model.reportType, styles: { default: { document: { run: { font: "Arial", size: 18, color: "172630" }, paragraph: { spacing: { after: 100, line: 276 } } } }, paragraphStyles: [{ id: "Heading1", name: "Heading 1", basedOn: "Normal", next: "Normal", quickFormat: true, run: { font: "Arial", size: 21, bold: true, color: DARK }, paragraph: { spacing: { before: 180, after: 90 }, outlineLevel: 0 } }, { id: "Heading2", name: "Heading 2", basedOn: "Normal", next: "Normal", quickFormat: true, run: { font: "Arial", size: 18, bold: true, color: BLUE }, paragraph: { spacing: { before: 140, after: 70 }, outlineLevel: 1 } }] }, sections: [{ properties: { page: { size: { width: A4_WIDTH, height: A4_HEIGHT }, margin: { top: PAGE_MARGIN, right: PAGE_MARGIN, bottom: PAGE_MARGIN, left: PAGE_MARGIN, header: 620, footer: 620 } } }, headers: { default: header }, footers: { default: footer }, children }] });
 }
 
 export async function createDocxBuffer(model) {

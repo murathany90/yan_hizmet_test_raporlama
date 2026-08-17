@@ -7,8 +7,8 @@ import { inferUnit } from "../../src/utils/text.js";
 describe("UTF-8 integrity", () => {
   it("keeps critical Turkish UI and report phrases intact", () => {
     const index = readFileSync(resolve("index.html"), "utf8");
-    expect(index).toContain("YDA (Yan Hizmetler Doğrulama Aracı)");
-    expect(index).toContain("Yan Hizmetler Doğrulama Aracı");
+    expect(index).toContain("YDA (Yan Hizmetler Testleri Doğrulama Aracı)");
+    expect(index).toContain("Yan Hizmetler Testleri Doğrulama Aracı");
     expect(index).toContain("Önizleme Oluştur");
     expect(MENU.map((item) => item.label).join(" ")).toContain("Sınırlı Frekans Hassasiyet Modu");
     expect(CONFIGS["PFK:HES"].criteria.join(" ")).toContain("Örnekleme");

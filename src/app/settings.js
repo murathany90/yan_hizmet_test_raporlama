@@ -1,9 +1,10 @@
-const STORAGE_KEY = "yda-document-settings-v070";
+const STORAGE_KEY = "yda-document-settings-v071";
+const PREVIOUS_STORAGE_KEY = "yda-document-settings-v070";
 const LEGACY_STORAGE_KEY = "teias-yhda-document-settings-v062";
 
 export const DEFAULT_DOCUMENT_SETTINGS = Object.freeze({
   institutionName: "Türkiye Elektrik İletim A.Ş.",
-  reportHeader: "YDA (Yan Hizmetler Doğrulama Aracı)",
+  reportHeader: "YDA (Yan Hizmetler Testleri Doğrulama Aracı)",
   reportFooter: "YDA | İmza öncesi teknik çıktı",
   city: "",
   regulationReference: "Elektrik Şebeke Yönetmeliği Ek-17",
@@ -12,6 +13,8 @@ export const DEFAULT_DOCUMENT_SETTINGS = Object.freeze({
   defaultSignatureRoles: "TEİAŞ Gözlemcisi; Tesis Yetkilisi; Testi Gerçekleştiren",
   showLogo: true,
   showWatermark: true,
+  showPfkOfficialWatermark: false,
+  includeEvidenceAppendix: false,
   watermarkOpacity: 0.08,
   defaults: {
     facilityName: "",
@@ -67,7 +70,7 @@ function deepMerge(base, input) {
 
 export function loadDocumentSettings() {
   try {
-    const stored = globalThis.localStorage?.getItem(STORAGE_KEY) ?? globalThis.localStorage?.getItem(LEGACY_STORAGE_KEY);
+    const stored = globalThis.localStorage?.getItem(STORAGE_KEY) ?? globalThis.localStorage?.getItem(PREVIOUS_STORAGE_KEY) ?? globalThis.localStorage?.getItem(LEGACY_STORAGE_KEY);
     return stored ? deepMerge(cloneDefaults(), JSON.parse(stored)) : cloneDefaults();
   } catch {
     return cloneDefaults();

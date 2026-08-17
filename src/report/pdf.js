@@ -1,5 +1,6 @@
 import { isMinutesReport } from "../app/settings.js";
 import { recordsForReportSection } from "./record-selection.js";
+import { pfkMinutesDetails, pfkSimulationSvg } from "./pfk-official.js";
 
 async function loadPdfMake() {
   const [pdfMakeModule, fontModule] = await Promise.all([import("pdfmake/build/pdfmake.js"), import("pdfmake/build/vfs_fonts.js")]);
@@ -17,7 +18,19 @@ const selected = recordsForReportSection;
 const certificateReserveRows = (model) => model.records.flatMap((record) => record.events?.length
   ? record.events.map((event) => ({ ...record, name: `${record.name} — ${event.label}`, status: event.status, metrics: { ...event.metrics, delaySeconds: event.metrics.delaySeconds, durationSeconds: event.metrics.sustainSeconds, trpA: event.metrics.trp?.TRP_A?.percentage, trpB: event.metrics.trp?.TRP_B?.percentage, trpC: event.metrics.trp?.TRP_C?.percentage } }))
   : (record.stepId.includes("NEG200") || record.stepId.includes("POS200") ? [record] : []));
-const summaryTable = (records) => table(["Test adımı", "CSV", "Durum", "Hesap / not"], records.map((record) => [record.name, record.filename, record.status, record.detail]), ["*", 90, 58, "*"], 6.8);
+const metric = (value, digits = 3) => Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : "—";
+const reserveSummaryTable = (records) => table(["Olay", "Pnom", "Pset", "ΔP", "Δtd", "Etkin.", "TRP A", "TRP B", "TRP C", "Sonuç"], records.map((record) => {
+  const metrics = record.metrics ?? {}; const trp = metrics.trp ?? {};
+  return [record.label || record.name, `${metric(metrics.pNomMw)} MW`, `${metric(metrics.pSetMw)} MW`, `${metric(metrics.deltaPowerMw)} MW`, `${metric(metrics.deltaTdSeconds)} s`, `${metric(metrics.officialActivationTimeSeconds)} s`, `${metric(trp.TRP_A?.percentage)} %`, `${metric(trp.TRP_B?.percentage)} %`, `${metric(trp.TRP_C?.percentage)} %`, record.status];
+}), ["*", 43, 43, 43, 38, 42, 38, 38, 38, 42], 5.5);
+const summaryTable = (records) => records.length && records.every((record) => record.eventId && record.metrics?.trp)
+  ? reserveSummaryTable(records)
+  : table(["Test adımı", "CSV", "Durum", "Hesap / not"], records.map((record) => [record.name, record.filename, record.status, record.detail]), ["*", 90, 58, "*"], 6.8);
+const reserveChecklist = (record) => {
+  const metrics = record.metrics ?? {}; const trp = metrics.trp ?? {};
+  const rows = [["100 ms kayıt", `${metric(metrics.sampleMs, 0)} ms`, Number(metrics.sampleMs) <= 102], ["Δtd", `${metric(metrics.deltaTdSeconds)} s`, Number(metrics.deltaTdSeconds) <= 4], ["t50 / t100", `${metric(metrics.t50Seconds)} / ${metric(metrics.t100Seconds)} s`, Number(metrics.t50Seconds) <= 15 && Number(metrics.t100Seconds) <= 30], ["Etkinleştirme", `${metric(metrics.officialActivationTimeSeconds)} s`, Number(metrics.officialActivationTimeSeconds) <= 30], ["Sürdürme", `${metric(metrics.sustainSeconds, 1)} s`, Number(metrics.sustainSeconds) >= 900], ["TRP A/B/C", `${metric(trp.TRP_A?.percentage)} / ${metric(trp.TRP_B?.percentage)} / ${metric(trp.TRP_C?.percentage)} %`, Number(trp.TRP_A?.percentage) >= 90 && Number(trp.TRP_B?.percentage) >= 90 && Number(trp.TRP_C?.percentage) >= 90]];
+  return table(["Resmî kontrol", "Ölçülen", "Sonuç"], rows.map(([label, value, passed]) => [label, value, passed ? "OLUMLU" : "OLUMSUZ"]), [170, "*", 62], 6.2);
+};
 const evidenceTable = (model) => table(["Dosya", "SHA-256", "Ünite", "STEP_ID", "Satır", "Başlangıç", "Bitiş", "ms"], model.evidence.map((item) => [item.filename, item.sha256, item.unitId, item.stepId, String(item.rowCount), item.start, item.end, Number.isFinite(item.sampleMs) ? item.sampleMs.toFixed(3) : "—"]), [50, 105, 30, 55, 28, 75, 75, 24], 5.2);
 
 function technicalContent(model) {
@@ -27,7 +40,7 @@ function technicalContent(model) {
 }
 
 function recordContent(records, charts = true) {
-  const content = [summaryTable(records)];
+  const content = [summaryTable(records), ...(records.length && records.every((record) => record.eventId && record.metrics?.trp) ? records.flatMap((record) => [{ text: `${record.name} — resmî kontrol listesi`, bold: true, fontSize: 7.4, margin: [0, 4, 0, 1] }, reserveChecklist(record)]) : [])];
   if (charts) records.forEach((record) => record.charts.forEach((chart) => content.push({ text: `${record.name} — ${chart.title}`, bold: true, fontSize: 7.5, margin: [0, 5, 0, 2] }, { image: chart.dataUrl, fit: [510, 185], alignment: "center", margin: [0, 0, 0, 7] })));
   return content;
 }
@@ -48,6 +61,10 @@ function minutesContent(model) {
   return [model.documentText.minutesIntroduction, model.documentText.operationSafety, model.documentText.testMethod].map((text) => ({ text, fontSize: 8.5, lineHeight: 1.25, margin: [0, 0, 0, 7] })).concat([table(["Santral / ünite detayı", "Değer"], [["Türbin / jeneratör", model.metadata.TURBINE_GENERATOR_DESCRIPTION || "—"], ["Nominal güç", `${model.metadata.PNOM_MW || "—"} MW`], ["Frekans simülasyonu", model.metadata.SIGNAL_GENERATOR || "—"], ["İşletme modu", model.metadata.UNIT_OPERATION_MODE || model.metadata.PFK_OPERATION_MODE || "—"]], [145, "*"], 7.4)]);
 }
 
+function pfkSimulationContent() {
+  return [{ text: "Şebeke frekansı ve kontrollü test sinyali, kayıt altındaki simülasyon yöntemiyle birleştirilerek hız regülatörü girişine uygulanır. Referans frekans ayrı izlenir.", fontSize: 8.5, margin: [0, 0, 0, 6] }, { svg: pfkSimulationSvg(), fit: [500, 150], alignment: "center", margin: [0, 2, 0, 7] }];
+}
+
 function certificateContent(model) {
   const reserve = certificateReserveRows(model);
   const device = model.technicalData.equipment[0] ?? {};
@@ -64,7 +81,7 @@ function certificateContent(model) {
   ];
   const pageTwo = [
     { text: "SONUÇ TABLOSU", alignment: "center", bold: true, color: "#063f68", fontSize: 15, margin: [0, 28, 0, 14] },
-    table(["Test", "Pnom", "Pset", "ΔP", "Etkinleşme s", "Sürdürme s", "TRP A", "TRP B", "TRP C", "Ölü bant", "Sonuç"], reserve.map((record) => [record.name, model.metadata.PNOM_MW || "—", record.stepId.includes("MAX") ? model.metadata.PSET_MAX_MW || "—" : model.metadata.PSET_MIN_MW || "—", model.metadata.RPMAX_MW || "—", Number.isFinite(record.metrics.delaySeconds) ? record.metrics.delaySeconds.toFixed(2) : "—", Number.isFinite(record.metrics.durationSeconds) ? record.metrics.durationSeconds.toFixed(1) : "—", Number.isFinite(record.metrics.trpA) ? record.metrics.trpA.toFixed(1) : "—", Number.isFinite(record.metrics.trpB) ? record.metrics.trpB.toFixed(1) : "—", Number.isFinite(record.metrics.trpC) ? record.metrics.trpC.toFixed(1) : "—", model.metadata.DEADBAND_MHZ || "—", record.status]), [70, 34, 34, 34, 45, 45, 35, 35, 35, 35, 44], 5.5),
+    table(["Test", "Pnom", "Pset", "ΔP", "Etkinleşme s", "Sürdürme s", "TRP A", "TRP B", "TRP C", "Ölü bant", "Sonuç"], reserve.map((record) => [record.name, metric(record.metrics.pNomMw), metric(record.metrics.pSetMw), metric(record.metrics.deltaPowerMw), metric(record.metrics.officialActivationTimeSeconds), metric(record.metrics.sustainSeconds, 1), metric(record.metrics.trp?.TRP_A?.percentage), metric(record.metrics.trp?.TRP_B?.percentage), metric(record.metrics.trp?.TRP_C?.percentage), record.metadata?.DEADBAND_MHZ || model.metadata.DEADBAND_MHZ || "—", record.status]), [70, 34, 34, 34, 45, 45, 35, 35, 35, 35, 44], 5.5),
     { text: model.documentText.certificateResult, fontSize: 8.5, lineHeight: 1.25, margin: [0, 13, 0, 8] },
     { text: model.documentText.certificateValidityText, fontSize: 8.5, lineHeight: 1.25, margin: [0, 0, 0, 12] },
     { text: `Düzenlenme tarihi: ${new Date().toLocaleDateString("tr-TR")}`, fontSize: 8 },
@@ -77,8 +94,10 @@ function certificateContent(model) {
 
 function sectionContent(section, model) {
   if (section.type === "technical") return technicalContent(model);
-  if (section.type === "participants") return [table(["Alan", "Değer"], [["Test ekibi / katılımcılar", model.metadata.TEST_TEAM || "—"], ["Raporu hazırlayan", model.metadata.REPORT_PREPARED_BY || "—"]], [150, "*"], 7.7)];
+  if (section.type === "participants") return [table(["Ad Soyad", "Kurum", "Ünvan", "Rol", "İmza"], model.participants.map((participant) => [participant.name, participant.company, participant.title, participant.role, participant.signature]), ["*", "*", "*", "*", 42], 7.1)];
   if (section.type === "minutes") return minutesContent(model);
+  if (section.type === "pfk-simulation") return pfkSimulationContent();
+  if (section.type === "pfk-minutes-details") return [table(["Bilgi", "Değer"], pfkMinutesDetails(model), [170, "*"], 7.4)];
   if (section.type === "campaign-summary") return campaignContent(model.campaignSummary);
   if (section.type === "evidence") return [{ text: "SHA-256 özeti elektronik imza değildir; ham CSV arşiv zinciri için izlenebilirlik sağlar.", fontSize: 7.5 }, { text: model.documentText.attachmentsDescription, fontSize: 7.5, margin: [0, 2, 0, 4] }, evidenceTable(model)];
   if (section.type === "summary") {
@@ -86,6 +105,13 @@ function sectionContent(section, model) {
     return [{ text: isMinutes ? model.documentText.minutesResult : model.documentText.reportConclusion, fontSize: 8.3, margin: [0, 0, 0, 5] }, { text: `Otomatik değerlendirme: ${model.overallStatus} | Resmî çıktı statüsü: ${model.officialStatus}`, bold: true, fontSize: 8.2 }, summaryTable(model.records), ...(isMinutes && section.heading.includes("TESLİM") ? [{ text: model.documentText.copyDelivery, fontSize: 8 }] : [])];
   }
   if (section.type === "evaluation") return [{ text: model.documentText.testResult, fontSize: 8.3, margin: [0, 0, 0, 5] }, { text: `Test sonuçları hedef/ölçülen değerler, ortalama, kararlılık ve kabul kriterleriyle değerlendirildi. Durum: ${model.overallStatus}`, bold: true, fontSize: 8.2 }, summaryTable(model.records)];
+  if (section.type === "pfk-conclusion") return [
+    { text: "Primer Frekans Kontrol Performans Testleri Özet Tablosu", bold: true, fontSize: 8.5, margin: [0, 0, 0, 3] },
+    reserveSummaryTable(certificateReserveRows(model)),
+    { text: "Primer Frekans Kontrol Performans Testleri Sonuç Tablosu", bold: true, fontSize: 8.5, margin: [0, 6, 0, 3] },
+    table(["Teknik değerlendirme", "Belge tamlığı", "Açıklama"], [[model.evaluationStatus, model.documentStatus, "Teknik kabul ve belge tamlığı ayrı izlenir."]], [125, 125, "*"], 7),
+    { text: model.documentText.reportConclusion, fontSize: 8.3, margin: [0, 5, 0, 0] }
+  ];
   if (section.type === "conclusion") return [{ text: model.documentText.reportConclusion, fontSize: 8.3, margin: [0, 0, 0, 5] }, { text: `Nihai sonuç: ${model.overallStatus}`, bold: true, fontSize: 9, color: model.overallStatus === "GEÇTİ" ? "19724f" : "9b1c1c" }];
   if (section.type === "grouped-records") return groupedContent(model, section);
   return recordContent(selected(model, section));
@@ -107,9 +133,9 @@ export function makePdfDefinition(model) {
     ...(model.draft ? [{ text: model.documentText.draftWarning || "İMZA ÖNCESİ / TASLAK", bold: true, alignment: "center", color: "#8a5700", margin: [0, 28, 0, 0], fontSize: 10 }] : [])
   ], pageBreak: "after" }];
   content.push({ text: "İÇİNDEKİLER", style: "sectionHeading" }, { ol: model.sections.filter((section) => section.type !== "evidence").map((section) => section.heading), fontSize: 8.5, margin: [12, 4, 0, 12] }, { text: "YÜKLEME VE TAMLIK DURUMU", style: "sectionHeading" }, { text: model.missingSteps.length ? `Eksik test adımları: ${model.missingSteps.map((step) => step.stepId).join(", ")}` : `Beklenen ${model.expectedStepCount} test adımının tamamı yüklendi.`, color: model.missingSteps.length ? "#9b1c1c" : "#19724f", bold: true, fontSize: 8.5 }, ...(isMinutes ? [] : [{ text: model.documentText.reportIntroduction, fontSize: 8.2, margin: [0, 4, 0, 5] }]), { text: model.reportNote, fontSize: 8, margin: [0, 0, 0, 5] });
-  model.sections.forEach((section) => { content.push({ text: section.heading, style: "sectionHeading" }, ...sectionContent(section, model)); });
+  model.sections.forEach((section, index) => { content.push({ text: section.heading, style: "sectionHeading", pageBreak: model.figureProfile?.startsWith("OFFICIAL_TEIAS_PFK") && index > 0 ? "before" : undefined }, ...sectionContent(section, model)); });
   content.push({ text: "İMZA ALANLARI", style: "sectionHeading" }, { columns: model.signatures.map((signature) => ({ width: "*", stack: [{ text: "\n\n________________________", alignment: "center" }, { text: signature.role, bold: true, alignment: "center", fontSize: 7.5 }, { text: signature.name, alignment: "center", fontSize: 7.5 }] })), columnGap: 10 });
-  return { pageSize: "A4", pageMargins: [36, 48, 36, 42], defaultStyle: { font: "Roboto", fontSize: 9, color: "#172630" }, watermark: model.watermark ? { text: model.watermark.text, color: "#005b9f", opacity: model.watermark.opacity, bold: true, fontSize: 54 } : undefined, styles: { sectionHeading: { fontSize: 10, bold: true, color: "#244b64", fillColor: "#eaf2f7", margin: [0, 10, 0, 6] }, subHeading: { fontSize: 8.5, bold: true, color: "#244b64", margin: [0, 7, 0, 3] } }, footer: (currentPage, pageCount) => ({ text: `${model.settings.reportFooter || "YDA"} | Sayfa ${currentPage}/${pageCount}`, alignment: "center", color: "#637585", fontSize: 7, margin: [0, 10, 0, 0] }), info: { title: model.title, author: "YDA (Yan Hizmetler Doğrulama Aracı)", subject: model.reportType }, content };
+  return { pageSize: "A4", pageMargins: [36, 48, 36, 42], defaultStyle: { font: "Roboto", fontSize: 9, color: "#172630" }, watermark: model.watermark ? { text: model.watermark.text, color: "#005b9f", opacity: model.watermark.opacity, bold: true, fontSize: 54 } : undefined, styles: { sectionHeading: { fontSize: 10, bold: true, color: "#244b64", fillColor: "#eaf2f7", margin: [0, 10, 0, 6] }, subHeading: { fontSize: 8.5, bold: true, color: "#244b64", margin: [0, 7, 0, 3] } }, footer: (currentPage, pageCount) => ({ text: `${model.settings.reportFooter || "YDA"} | Sayfa ${currentPage}/${pageCount}`, alignment: "center", color: "#637585", fontSize: 7, margin: [0, 10, 0, 0] }), info: { title: model.title, author: "YDA (Yan Hizmetler Testleri Doğrulama Aracı)", subject: model.reportType }, content };
 }
 
 export async function createPdfBuffer(model) {

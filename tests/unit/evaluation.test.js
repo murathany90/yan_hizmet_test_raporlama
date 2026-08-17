@@ -1,12 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { evaluateRecord } from "../../src/analysis/evaluate.js";
 import { CONFIGS } from "../../src/app/config-runtime.js";
+import { buildOfficialReserveEnvelope } from "../../src/criteria/pfk.js";
 
 function record(step, rows) {
   return { step, rows };
 }
 
 describe("service evaluation", () => {
+  it("uses the official Pset-based asymmetric PFK reserve envelope in both directions", () => {
+    const negative = buildOfficialReserveEnvelope({ direction: "NEG200", pSet: 100, rpMax: 10, pNom: 100, responseDelay: 4, t: 20 });
+    const positive = buildOfficialReserveEnvelope({ direction: "POS200", pSet: 100, rpMax: 10, pNom: 100, responseDelay: 4, t: 20 });
+    expect(negative.trpA.lower).toBeCloseTo(105.53846, 5);
+    expect(negative.trpA.upper).toBe(112);
+    expect(negative.trpB).toEqual({ lower: 109, upper: 112 });
+    expect(negative.trpC).toEqual({ lower: 109, upper: 111 });
+    expect(positive.trpA.lower).toBe(88);
+    expect(positive.trpA.upper).toBeCloseTo(94.46154, 5);
+    expect(positive.trpB).toEqual({ lower: 88, upper: 91 });
+    expect(positive.trpC).toEqual({ lower: 89, upper: 91 });
+  });
+
   it("passes a compliant HES PFK reserve response", () => {
     const rows = Array.from({ length: 9_201 }, (_, index) => {
       const time_s = -20 + index * 0.1;

@@ -1,7 +1,7 @@
 [package]
 name = "yda"
-version = "0.7.0"
-description = "YDA (Yan Hizmetler Doğrulama Aracı)"
+version = "0.7.1"
+description = "YDA (Yan Hizmetler Testleri Doğrulama Aracı)"
 authors = ["YDA Contributors"]
 edition = "2021"
 rust-version = "1.77.2"

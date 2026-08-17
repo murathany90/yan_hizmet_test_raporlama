@@ -1,4 +1,4 @@
-﻿# YHDA_VERSION=0.7.0
+﻿# YHDA_VERSION=0.7.1
 # TEST_SERVICE=SFK
 # PLANT_TYPE=DGKCS
 # STEP_ID=MIN_LOAD_UP
@@ -28,6 +28,6 @@
 # SETPOINT_ROUNDTRIP_S=4
 # PRIMARY_RESERVE_MW=0
 # GOVERNOR_DROOP_TEST_PERCENT=8
-# YDA_VERSION=0.7.0
+# YDA_VERSION=0.7.1
 ZAMAN;SIRA_NO;agc_setpoint_mw;active_power_mw;setpoint_feedback_mw;grid_frequency_hz;lmin;lmax;lloc;lrem;lman;lmic;lpwr;genstat;pfco;governor_droop_pct
 16.8.2026 00:00:00,0s;1;;;;50,000;;;;;;;;;;

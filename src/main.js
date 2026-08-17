@@ -729,6 +729,8 @@ function renderSettings() {
     settingControl("Varsayılan imza rolleri (; ile ayırın)", settings.defaultSignatureRoles, "text", (value) => updateSettings({ defaultSignatureRoles: value })),
     settingControl("TEİAŞ amblemini göster", settings.showLogo, "checkbox", (value) => updateSettings({ showLogo: value })),
     settingControl("TEİAŞ filigranını göster (PDF ve Word arka planı)", settings.showWatermark, "checkbox", (value) => updateSettings({ showWatermark: value })),
+    settingControl("Resmî PFK belgelerinde TEİAŞ filigranını göster", settings.showPfkOfficialWatermark, "checkbox", (value) => updateSettings({ showPfkOfficialWatermark: value })),
+    settingControl("YDA Teknik Kanıt Ekini rapora ekle", settings.includeEvidenceAppendix, "checkbox", (value) => updateSettings({ includeEvidenceAppendix: value })),
     settingControl("Filigran şeffaflığı", settings.watermarkOpacity, "number", (value) => updateSettings({ watermarkOpacity: Number(value) })),
     outputDirectoryControl(settings)
   ];
@@ -1017,7 +1019,7 @@ function boot() {
   elements.teiasLogo.src = TEIAS_LOGO_URL;
   const native = isTauriRuntime();
   elements.runtimeBadge.textContent = native ? "Tauri Masaüstü" : "Web";
-  document.title = `YDA (Yan Hizmetler Doğrulama Aracı) v${APP_VERSION}`;
+  document.title = `YDA (Yan Hizmetler Testleri Doğrulama Aracı) v${APP_VERSION}`;
   elements.nativeBulkOpen.hidden = !native;
   bindEvents();
   renderWorkspace();

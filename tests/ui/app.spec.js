@@ -49,12 +49,12 @@ test("loads PFK files, renders charts, criteria and reports without console erro
   await page.getByRole("button", { name: "Önizleme Oluştur" }).click();
   await expect(page.locator("#reportPaper")).toContainText("PRİMER FREKANS KONTROL PERFORMANS TEST RAPORU");
   await expect(page.locator("#reportPaper")).toContainText("B) TEKNİK VERİLER");
-  await expect(page.locator("#reportPaper")).toContainText("HAM CSV SHA-256 KANIT MANİFESTİ");
+  await expect(page.locator("#reportPaper")).not.toContainText("HAM CSV SHA-256 KANIT MANİFESTİ");
   await expect(page.locator("#reportPaper")).toContainText("TASLAK / EKSİK BİLGİ");
   await expect(page.locator("#reportPaper")).not.toContainText("ORİJİNAL FORMAT / KAYNAK BELGE REFERANSI");
   await page.locator("#reportType").selectOption({ label: "Test Tutanağı" });
   await expect(page.locator("#reportPaper")).toContainText("PRİMER FREKANS KONTROL PERFORMANS TESTLERİ TUTANAĞI");
-  await expect(page.locator("#reportPaper")).toContainText("SONUÇ VE NÜSHA TESLİMİ");
+  await expect(page.locator("#reportPaper")).toContainText("NÜSHA TESLİMİ");
   for (const reportType of ["Performans Test Raporu", "Test Tutanağı", "Test Sertifikası"]) {
     await page.locator("#reportType").selectOption({ label: reportType });
     const wordDownloadPromise = page.waitForEvent("download");
