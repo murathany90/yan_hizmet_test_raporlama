@@ -1,6 +1,7 @@
 import { dataUrlToUint8Array } from "../utils/text.js";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { isMinutesReport } from "../app/settings.js";
+import { recordsForReportSection } from "./record-selection.js";
 
 const A4_WIDTH = 11906;
 const A4_HEIGHT = 16838;
@@ -38,11 +39,10 @@ export async function buildDocxDocument(model) {
   const heading = (text, level = HeadingLevel.HEADING_1) => new Paragraph({ heading: level, spacing: { before: 180, after: 90 }, shading: { type: ShadingType.CLEAR, fill: LIGHT, color: "auto" }, border: { left: { style: BorderStyle.SINGLE, size: 16, color: BLUE, space: 5 } }, children: [new TextRun({ text, bold: true, size: level === HeadingLevel.HEADING_1 ? 21 : 18, color: DARK, font: "Arial" })] });
   const cell = (text, width, options = {}) => new TableCell({ width: { size: width, type: WidthType.DXA }, verticalAlign: VerticalAlign.CENTER, shading: options.header ? { type: ShadingType.CLEAR, fill: LIGHT, color: "auto" } : undefined, margins: { top: 70, bottom: 70, left: 80, right: 80 }, children: [paragraph(text, { bold: options.header, size: options.size ?? 14, after: 0, line: 210, alignment: options.alignment })] });
   const makeTable = (headers, rows, widths, size = 14) => new Table({ width: { size: TABLE_WIDTH, type: WidthType.DXA }, columnWidths: widths, borders, rows: [new TableRow({ tableHeader: true, cantSplit: true, children: headers.map((item, index) => cell(item, widths[index], { header: true, size })) }), ...(rows.length ? rows : [["Yüklenmiş kayıt yok"]]).map((row) => new TableRow({ cantSplit: true, children: widths.map((width, index) => cell(row[index] ?? "", width, { size })) }))] });
-  const selected = (selection = []) => {
-    if (Array.isArray(selection)) return model.records.filter((record) => selection.includes(record.stepId));
-    if (selection.recordKeys?.length) return model.records.filter((record) => selection.recordKeys.includes(record.recordKey));
-    return model.records.filter((record) => selection.stepIds?.includes(record.stepId));
-  };
+  const selected = (selection = []) => recordsForReportSection(model, selection);
+  const certificateReserveRows = () => model.records.flatMap((record) => record.events?.length
+    ? record.events.map((event) => ({ ...record, name: `${record.name} — ${event.label}`, status: event.status, metrics: { ...event.metrics, delaySeconds: event.metrics.delaySeconds, durationSeconds: event.metrics.sustainSeconds, trpA: event.metrics.trp?.TRP_A?.percentage, trpB: event.metrics.trp?.TRP_B?.percentage, trpC: event.metrics.trp?.TRP_C?.percentage } }))
+    : (record.stepId.includes("NEG200") || record.stepId.includes("POS200") ? [record] : []));
   const summaryTable = (records) => makeTable(["Test adımı", "CSV", "Durum", "Hesap / not"], records.map((record) => [record.name, record.filename, record.status, record.detail]), [2400, 1800, 1100, TABLE_WIDTH - 5300], 13);
   const technical = () => [
     paragraph(model.documentText.technicalData, { size: 15 }),
@@ -81,7 +81,7 @@ export async function buildDocxDocument(model) {
   };
   const certificate = () => {
     const device = model.technicalData.equipment[0] ?? {};
-    const reserve = model.records.filter((record) => record.stepId.includes("NEG200") || record.stepId.includes("POS200"));
+    const reserve = certificateReserveRows();
     return [
       ...(model.assets.logoDataUrl ? [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 180, after: 120 }, children: [new ImageRun({ data: dataUrlToUint8Array(model.assets.logoDataUrl), transformation: { width: 72, height: 100 }, type: "png" })] })] : []),
       paragraph(`Sertifika No: ${model.metadata.REPORT_NO || "—"}`, { alignment: AlignmentType.RIGHT, size: 16 }),
@@ -114,9 +114,9 @@ export async function buildDocxDocument(model) {
     ...model.sections.flatMap((section) => [heading(section.heading), ...sectionContent(section)]),
     heading("İMZA ALANLARI"), new Table({ width: { size: TABLE_WIDTH, type: WidthType.DXA }, columnWidths: model.signatures.map(() => Math.floor(TABLE_WIDTH / model.signatures.length)), borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE }, insideHorizontal: { style: BorderStyle.NONE }, insideVertical: { style: BorderStyle.NONE } }, rows: [new TableRow({ children: model.signatures.map((signature) => cell(`\n\n________________________\n${signature.role}\n${signature.name}`, Math.floor(TABLE_WIDTH / model.signatures.length), { alignment: AlignmentType.CENTER, size: 14 })) })] })
   ];
-  const header = new Header({ children: [paragraph(`${model.settings.reportHeader || "TEİAŞ-YHDA"}${model.watermark ? "   |   TEİAŞ" : ""}`, { size: 13, color: "637585", after: 0 })] });
-  const footer = new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `${model.settings.reportFooter || "TEİAŞ-YHDA"} | Sayfa `, size: 13, color: "637585", font: "Arial" }), new TextRun({ children: [PageNumber.CURRENT], size: 13, color: "637585", font: "Arial" }), new TextRun({ text: "/", size: 13, color: "637585", font: "Arial" }), new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 13, color: "637585", font: "Arial" })] })] });
-  return new Document({ creator: "TEİAŞ-YHDA", title: model.title, description: model.reportType, styles: { default: { document: { run: { font: "Arial", size: 18, color: "172630" }, paragraph: { spacing: { after: 100, line: 276 } } } }, paragraphStyles: [{ id: "Heading1", name: "Heading 1", basedOn: "Normal", next: "Normal", quickFormat: true, run: { font: "Arial", size: 21, bold: true, color: DARK }, paragraph: { spacing: { before: 180, after: 90 }, outlineLevel: 0 } }, { id: "Heading2", name: "Heading 2", basedOn: "Normal", next: "Normal", quickFormat: true, run: { font: "Arial", size: 18, bold: true, color: BLUE }, paragraph: { spacing: { before: 140, after: 70 }, outlineLevel: 1 } }] }, sections: [{ properties: { page: { size: { width: A4_WIDTH, height: A4_HEIGHT }, margin: { top: PAGE_MARGIN, right: PAGE_MARGIN, bottom: PAGE_MARGIN, left: PAGE_MARGIN, header: 620, footer: 620 } } }, headers: { default: header }, footers: { default: footer }, children }] });
+  const header = new Header({ children: [paragraph(`${model.settings.reportHeader || "YDA"}${model.watermark ? "   |   TEİAŞ" : ""}`, { size: 13, color: "637585", after: 0 })] });
+  const footer = new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `${model.settings.reportFooter || "YDA"} | Sayfa `, size: 13, color: "637585", font: "Arial" }), new TextRun({ children: [PageNumber.CURRENT], size: 13, color: "637585", font: "Arial" }), new TextRun({ text: "/", size: 13, color: "637585", font: "Arial" }), new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 13, color: "637585", font: "Arial" })] })] });
+  return new Document({ creator: "YDA (Yan Hizmetler Doğrulama Aracı)", title: model.title, description: model.reportType, styles: { default: { document: { run: { font: "Arial", size: 18, color: "172630" }, paragraph: { spacing: { after: 100, line: 276 } } } }, paragraphStyles: [{ id: "Heading1", name: "Heading 1", basedOn: "Normal", next: "Normal", quickFormat: true, run: { font: "Arial", size: 21, bold: true, color: DARK }, paragraph: { spacing: { before: 180, after: 90 }, outlineLevel: 0 } }, { id: "Heading2", name: "Heading 2", basedOn: "Normal", next: "Normal", quickFormat: true, run: { font: "Arial", size: 18, bold: true, color: BLUE }, paragraph: { spacing: { before: 140, after: 70 }, outlineLevel: 1 } }] }, sections: [{ properties: { page: { size: { width: A4_WIDTH, height: A4_HEIGHT }, margin: { top: PAGE_MARGIN, right: PAGE_MARGIN, bottom: PAGE_MARGIN, left: PAGE_MARGIN, header: 620, footer: 620 } } }, headers: { default: header }, footers: { default: footer }, children }] });
 }
 
 export async function createDocxBuffer(model) {

@@ -2,6 +2,22 @@
 
 Bu proje [Semantic Versioning](https://semver.org/) yaklaşımını izler.
 
+## [0.7.0] - 2026-08-17
+
+### Değişti
+
+- Uygulamanın görünen adı **YDA (Yan Hizmetler Doğrulama Aracı)** olarak birleştirildi; eski YHDA veri anahtarları yalnız CSV ve yerel ayar uyumluluğu için korunur.
+- `docs/icon.png` web favicon, Windows/Tauri uygulama, taskbar ve kurulum ikonu ölçeklerine yeniden üretildi.
+- Klasik PFK HES/DGKÇS/TES akışı yeni üretimde dört fiziksel CSV kullanır: `MAKSIMUM_REZERV`, `MINIMUM_REZERV`, `HASSASIYET`, `DOGRULAMA_24H`.
+
+### Eklendi
+
+- Maksimum/minimum rezerv kaydında sıralı −200/+200 mHz plateau segmentasyonu; olay başına gecikme, t50, t100, 900 s sürdürme ve TRP-A/B/C uygunluk analizi.
+- Aynı kriter kaynağından üretilen olay grafikleri (ölçülen güç, hedef, tolerans bandı) ve rapor C/D alt bölümleri.
+- 24 saatlik PFK doğrulamasında beklenen güç, ±%1 Pnom bandı, uygunluk oranı ve pozitif/negatif kritik pencere grafikleri.
+- Klasik tek üniteli ve iki üniteli HES örnekleri 4-CSV yapısıyla yenilendi; U1/U2 Pnom ve RPmax metadata’sı ayrı ayrı korunur.
+- PFK tamlık kapısı ile eksik rapor metadata’sı/olayı için açık `TASLAK / EKSİK BİLGİ` statüsü ve genişletilmiş provenance manifesti.
+
 ## [0.6.5] - 2026-08-16
 
 ### Düzeltildi

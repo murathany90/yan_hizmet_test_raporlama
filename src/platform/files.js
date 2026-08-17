@@ -27,7 +27,7 @@ function fileTypeFor(filename, mimeType) {
   const extension = String(filename).split(".").at(-1)?.toLowerCase();
   return {
     extension: extension && extension !== filename ? extension : "bin",
-    label: "TEİAŞ-YHDA çıktısı"
+    label: "YDA çıktısı"
   };
 }
 
@@ -55,13 +55,13 @@ export async function chooseOutputDirectory() {
   const selected = await open({
     directory: true,
     multiple: false,
-    title: "TEİAŞ-YHDA çıktı klasörünü seçin"
+    title: "YDA çıktı klasörünü seçin"
   });
   return typeof selected === "string" ? selected : "";
 }
 
 export async function saveBinary(data, defaultFilename, mimeType = "application/octet-stream", outputDirectory = "") {
-  const initialFilename = safeFilename(defaultFilename, "TEIAS-YHDA-cikti");
+  const initialFilename = safeFilename(defaultFilename, "YDA-cikti");
   const fileType = fileTypeFor(initialFilename, mimeType);
   const filename = withExtension(initialFilename, fileType.extension);
   if (isTauriRuntime()) {
@@ -126,7 +126,7 @@ export async function openCsvFilesNative() {
 export async function askReplace(message) {
   if (isTauriRuntime()) {
     const { confirm } = await import("@tauri-apps/plugin-dialog");
-    return await confirm(message, { title: "TEİAŞ-YHDA", kind: "warning" });
+    return await confirm(message, { title: "YDA", kind: "warning" });
   }
   return window.confirm(message);
 }

@@ -1,4 +1,4 @@
-﻿# YHDA_VERSION=0.6.5
+﻿# YHDA_VERSION=0.7.0
 # TEST_SERVICE=RGDH
 # PLANT_TYPE=EDUEDT
 # STEP_ID=CHARGE_OE_MAX
@@ -36,5 +36,6 @@
 # TRAFO_TAP_INFO=Nominal kademe
 # MAX_ACCESSIBLE_POWER_MW=
 # SIGNAL_GENERATOR=Gerilim referans basamak simülasyonu
+# YDA_VERSION=0.7.0
 ZAMAN;SIRA_NO;system_voltage_kv;voltage_reference_kv;total_active_power_mw;total_reactive_power_mvar;main_source_active_power_mw;main_source_reactive_power_mvar;aux_source_active_power_mw;aux_source_reactive_power_mvar;soc_pct;stored_energy_mwh
 16.8.2026 00:00:00,0s;1;;;;;;;;;;

@@ -7,7 +7,7 @@ export function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-export function safeFilename(value, fallback = "TEIAS-YHDA-raporu") {
+export function safeFilename(value, fallback = "YDA-raporu") {
   const normalized = String(value ?? "")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")

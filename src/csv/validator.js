@@ -1,4 +1,5 @@
 import { convertRows, parseLocaleNumber } from "./parser.js";
+import { PFK_CRITERIA } from "../criteria/pfk.js";
 
 function median(values) {
   if (!values.length) return Number.NaN;
@@ -9,9 +10,9 @@ function median(values) {
 
 export function minimumDurationSeconds(route) {
   const { service, plant, step } = route;
-  if (service === "PFK" && step.kind === "reserve") return 900;
+  if (service === "PFK" && ["reserve", "reserve_sequence"].includes(step.kind)) return 900;
   if (service === "PFK" && step.kind === "sensitivity") return 40;
-  if (service === "PFK" && step.kind === "validation") return plant === "EDUEDT" ? 10_800 : 86_399;
+  if (service === "PFK" && step.kind === "validation") return plant === "EDUEDT" ? 10_800 : PFK_CRITERIA.validation24h.minimumSeconds;
   if (service === "PFK" && step.kind === "bess_reserve") return 900;
   if (service === "PFK" && step.kind === "bess_sensitivity") return 40;
   if (service === "RGDH" && step.kind === "capacity") return 600;

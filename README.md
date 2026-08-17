@@ -1,6 +1,13 @@
-# TEİAŞ-YHDA v0.6.5
+# YDA (Yan Hizmetler Doğrulama Aracı) v0.7.0
 
-TEİAŞ Yan Hizmetler Doğrulama Aracı; PFK, RGDH, HFK, SFHM ve SFK test kayıtlarını yerel olarak doğrulayan, grafikleyen ve ortak bir rapor modelinden PDF/DOCX çıktısı üreten çevrimdışı odaklı bir web/Tauri uygulamasıdır.
+YDA (Yan Hizmetler Doğrulama Aracı); PFK, RGDH, HFK, SFHM ve SFK test kayıtlarını yerel olarak doğrulayan, grafikleyen ve ortak bir rapor modelinden PDF/DOCX çıktısı üreten çevrimdışı odaklı bir web/Tauri uygulamasıdır.
+
+## v0.7.0 — YDA markası ve 4-CSV klasik PFK
+
+- Uygulama, installer, taskbar/EXE ve web favicon için `docs/icon.png` temelli YDA ikonu kullanılır.
+- Klasik PFK HES/DGKÇS/TES yeni şablonları `MAKSIMUM_REZERV.csv`, `MINIMUM_REZERV.csv`, `HASSASIYET.csv` ve `DOGRULAMA_24H.csv` olarak üretilir. Maksimum/minimum dosyası kendi içinde −200/+200 mHz olaylarını barındırır ve ayırır.
+- Her rezerv olayı ayrı gecikme, t50, t100, 900 s ve TRP-A/B/C sonucuyla; grafiklerde ölçülen/hesaplanan hedef/tolerans bantlarıyla gösterilir. PDF, DOCX ve HTML önizleme aynı ReportModel’i kullanır.
+- Eski `RES_*` ve `VALIDATION` metadata değerleri yalnız geri uyumlu içe aktarma için okunur; yeni ZIP/şablon üretiminde yer almaz.
 
 > HFK, SFHM ve resmî ayrıntılı formatı repository kaynaklarında bulunmayan EDÜ/EDT-SFK çıktıları yalnız **Teknik Ön Değerlendirme / Taslak** statüsündedir; resmî TEİAŞ raporu veya sertifikası yerine geçmez.
 
@@ -23,7 +30,7 @@ TEİAŞ Yan Hizmetler Doğrulama Aracı; PFK, RGDH, HFK, SFHM ve SFK test kayıt
 - Ayarlar metinleri hizmet ve belge türü bağlamında düzenlenir; `{{TESIS_ADI}}`, `{{UNIT_NAME}}`, `{{PNOM_MW}}` dahil desteklenen placeholder’lar arayüzde görünür.
 - SHA-256 dosya bütünlüğünü doğrular; elektronik imza değildir.
 
-Taşınabilir Windows çıktısı için her güncellemeden sonra aşağıdaki komut kullanılabilir. Komut, Tauri release ikilisini `dist/TEIAS-YHDA_v<sürüm>_portable_<YYYYMMDD-HHMMSS>.exe` adına kopyalar; web varlıkları ayrı `dist/web` dizininde tutulur.
+Taşınabilir Windows çıktısı için her güncellemeden sonra aşağıdaki komut kullanılabilir. Komut, Tauri release ikilisini `dist/YDA_v<sürüm>_portable_<YYYYMMDD-HHMMSS>.exe` adına kopyalar; web varlıkları ayrı `dist/web` dizininde tutulur.
 
 ```powershell
 npm.cmd run release:portable
@@ -113,7 +120,7 @@ CSV dosyaları UTF-8 BOM ve `;` ayırıcı kullanır. Ondalık sayılarda hem `1
 ```text
 # TEST_SERVICE=PFK
 # PLANT_TYPE=HES
-# STEP_ID=RES_MAX_NEG200
+# STEP_ID=MAKSIMUM_REZERV
 # SAMPLE_PERIOD_MS=100
 ```
 
@@ -153,8 +160,8 @@ npm.cmd run test:all
 Beklenen CSV envanteri:
 
 ```text
-CSV templates: 75/75 PASS
-Example CSV: 87/87 PASS
+CSV templates: 69/69 PASS
+Example CSV: 77/77 PASS
 ```
 
 ## Mimari
@@ -184,6 +191,7 @@ Rapor görselleri Vite/Tauri paketine göreli asset olarak alınır; çalışma 
 ## Denetim ve sürüm notları
 
 - Ayrıntılı ilk durum, kök nedenler ve doğrulama kanıtları: [`docs/REPO_AUDIT.md`](docs/REPO_AUDIT.md)
+- v0.7.0 kaynak/uyumluluk denetimi: [`docs/YDA_VNEXT_AUDIT.md`](docs/YDA_VNEXT_AUDIT.md)
 - v0.6.1 başlangıç denetimi: [`docs/V061_AUDIT.md`](docs/V061_AUDIT.md)
 - v0.6.2 zaman/veri/rapor denetimi: [`docs/V062_AUDIT.md`](docs/V062_AUDIT.md)
 - Kaynak format → YHDA alan eşlemesi: [`docs/TEIAS_REPORT_FORMAT_MAPPING.md`](docs/TEIAS_REPORT_FORMAT_MAPPING.md)

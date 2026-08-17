@@ -1,7 +1,7 @@
-import { CONFIGS } from "./config-v062.js";
+import { CONFIGS } from "./config-runtime.js";
 import { loadDocumentSettings, patchDocumentSettings as patchSettings, resetDocumentSettings as resetSettings } from "./settings.js";
 
-export const APP_VERSION = "0.6.5";
+export const APP_VERSION = "0.7.0";
 
 export function modeKey(service, plant) {
   return `${service}:${plant}`;
@@ -26,7 +26,10 @@ export function makeDefaultMetadata(service, plant) {
   const metadata = Object.fromEntries(config.meta.map(([key, , , defaultValue]) => [key, defaultValue ?? ""]));
   metadata.TEST_SERVICE = service;
   metadata.PLANT_TYPE = plant;
+  // YHDA_VERSION eski CSV alıcıları için korunur; yeni üretim YDA adını kullanır.
+  metadata.YDA_VERSION = APP_VERSION;
   metadata.YHDA_VERSION = APP_VERSION;
+  metadata.REPORT_PREPARED_BY = String(metadata.REPORT_PREPARED_BY ?? "").replace(/^YHDA\b/i, "YDA");
   return metadata;
 }
 
@@ -116,13 +119,15 @@ export function patchModeMetadata(state, service, plant, values) {
   const metadata = getModeMetadata(state, service, plant);
   const allowed = new Set(configFor(service, plant).meta.map(([key]) => key));
   for (const [key, value] of Object.entries(values)) {
-    if (allowed.has(key) || ["TEST_SERVICE", "PLANT_TYPE", "YHDA_VERSION"].includes(key)) {
+    if (allowed.has(key) || ["TEST_SERVICE", "PLANT_TYPE", "YDA_VERSION", "YHDA_VERSION"].includes(key)) {
       metadata[key] = value;
     }
   }
   metadata.TEST_SERVICE = service;
   metadata.PLANT_TYPE = plant;
+  metadata.YDA_VERSION = APP_VERSION;
   metadata.YHDA_VERSION = APP_VERSION;
+  metadata.REPORT_PREPARED_BY = String(metadata.REPORT_PREPARED_BY ?? "").replace(/^YHDA\b/i, "YDA");
   state.reportDirty = true;
   return metadata;
 }

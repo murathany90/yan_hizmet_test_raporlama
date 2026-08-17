@@ -1,0 +1,8 @@
+﻿# TEST_SERVICE=PFK
+# PLANT_TYPE=TES
+# STEP_ID=MINIMUM_REZERV
+# SAMPLE_PERIOD_MS=100
+# YDA_VERSION=0.7.0
+# YHDA_VERSION=0.7.0
+ZAMAN;SIRA_NO;grid_frequency_hz;test_frequency_hz;active_power_mw;active_power_reference_mw;regulator_valve_pct;steam_pressure_bar;steam_temperature_c
+1.1.2026 00:00:00,0s;1;50,000;50,000;;;;;

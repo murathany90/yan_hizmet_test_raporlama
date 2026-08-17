@@ -1,4 +1,4 @@
-﻿# YHDA_VERSION=0.6.5
+﻿# YHDA_VERSION=0.7.0
 # TEST_SERVICE=RGDH
 # PLANT_TYPE=EDUEDT
 # STEP_ID=VCTRL_PLUS1
@@ -16,7 +16,7 @@
 # CALIBRATION_DATE=2026-02-01
 # CALIBRATION_CERT_NO=YHDA-CAL-2026-001
 # TEST_ENGINEER=Sentetik Test Verisi
-# REPORT_PREPARED_BY=YHDA v0.6.5
+# REPORT_PREPARED_BY=YDA v0.7.0
 # RECORDING_COMPUTER=Saha Dizüstü Bilgisayarı
 # SAMPLE_PERIOD_MS=100
 # VOLTAGE_DROOP_PERCENT=4
@@ -31,6 +31,7 @@
 # SOC_INITIAL_PERCENT=65
 # TOTAL_UNIT_COUNT=2
 # ONLINE_UNIT_COUNT=2
+# YDA_VERSION=0.7.0
 ZAMAN;SIRA_NO;system_voltage_kv;voltage_reference_kv;total_active_power_mw;total_reactive_power_mvar;main_source_active_power_mw;main_source_reactive_power_mvar;aux_source_active_power_mw;aux_source_reactive_power_mvar;soc_pct;stored_energy_mwh
 16.8.2026 08:59:40,0s;1;154,013431;154,000000;80,003007;-0,011880;30;-0,002970;50,003007;-0,008910;65;130
 16.8.2026 08:59:40,1s;2;154,007479;154,000000;79,981555;0,063902;30;0,015976;49,981555;0,047927;65;130

@@ -11,6 +11,12 @@ describe("metadata routing and validation", () => {
     expect(route.legacySensitivityStepId).toBe("SENS_50_005");
   });
 
+  it("accepts an old single-event reserve CSV as a canonical four-CSV route", () => {
+    const route = resolveCsvRoute({ TEST_SERVICE: "PFK", PLANT_TYPE: "HES", STEP_ID: "RES_MAX_NEG200" });
+    expect(route.step.id).toBe("MAKSIMUM_REZERV");
+    expect(route.legacyReserveEventId).toBe("NEG200");
+  });
+
   it("routes PFK multi-unit metadata without colliding with the standard route", () => {
     const route = resolveCsvRoute({
       TEST_SERVICE: "PFK", PLANT_TYPE: "HES", STEP_ID: "RES_MAX_NEG200",

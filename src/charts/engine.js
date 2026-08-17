@@ -262,7 +262,7 @@ export class ChartManager {
       this.frames.delete(viewKey);
       const entry = this.registry.get(viewKey);
       if (!entry || !entry.details.open) return;
-      drawChart(entry.canvas, entry.record.rows, this.visibleSeries(viewKey, entry.series), viewFor(this.state, viewKey, entry.record.rows));
+      drawChart(entry.canvas, entry.rows, this.visibleSeries(viewKey, entry.series), viewFor(this.state, viewKey, entry.rows));
       const view = this.state.chartViews.get(viewKey);
       entry.minimumInput.value = entry.realTime ? dateInputValue(view.minimum) : String(view.minimum);
       entry.maximumInput.value = entry.realTime ? dateInputValue(view.maximum) : String(view.maximum);
@@ -280,9 +280,10 @@ export class ChartManager {
     const sets = record.seriesSets ?? seriesSetsFor(record, service);
     sets.forEach((set, index) => {
       const viewKey = `${modeKey}:${record.step.id}:${index}`;
+      const rows = set.rows ?? record.rows;
       const series = normalizeSeries(set.series);
-      const view = viewFor(this.state, viewKey, record.rows);
-      const realTime = usesRealTime(record.rows);
+      const view = viewFor(this.state, viewKey, rows);
+      const realTime = usesRealTime(rows);
       if (!this.state.chartOpenState.has(viewKey)) this.state.chartOpenState.set(viewKey, true);
 
       const details = document.createElement("details");
@@ -347,7 +348,7 @@ export class ChartManager {
       details.append(summary, inner);
       container.append(details);
 
-      const registryEntry = { details, canvas, record, series, title: set.title, minimumInput, maximumInput, realTime };
+      const registryEntry = { details, canvas, record, rows, series, title: set.title, minimumInput, maximumInput, realTime };
       this.registry.set(viewKey, registryEntry);
       this.resizeObserver.observe(inner);
       details.addEventListener("toggle", () => {
@@ -357,7 +358,7 @@ export class ChartManager {
       toolbar.addEventListener("click", async (event) => {
         const action = event.target.closest("button")?.dataset.chartAction;
         if (!action) return;
-        const currentView = viewFor(this.state, viewKey, record.rows);
+        const currentView = viewFor(this.state, viewKey, rows);
         if (action === "zoom-in" || action === "zoom-out") {
           const factor = action === "zoom-in" ? 0.65 : 1.55;
           this.adjustView(currentView, factor, 0.5);
@@ -377,7 +378,7 @@ export class ChartManager {
         } else if (action === "png") {
           canvas.toBlob((blob) => blob && this.onDownload(blob, `${safeFilename(record.name)}-${index + 1}.png`), "image/png");
         } else if (action === "svg") {
-          const svg = chartToSvg(record.rows, this.visibleSeries(viewKey, series), currentView, set.title);
+          const svg = chartToSvg(rows, this.visibleSeries(viewKey, series), currentView, set.title);
           await this.onDownload(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }), `${safeFilename(record.name)}-${index + 1}.svg`);
         }
       });
@@ -386,16 +387,16 @@ export class ChartManager {
         event.preventDefault();
         const rectangle = canvas.getBoundingClientRect();
         const ratio = Math.max(0, Math.min(1, (event.clientX - rectangle.left) / rectangle.width));
-        this.adjustView(viewFor(this.state, viewKey, record.rows), event.deltaY < 0 ? 0.65 : 1.55, ratio);
+        this.adjustView(viewFor(this.state, viewKey, rows), event.deltaY < 0 ? 0.65 : 1.55, ratio);
         this.scheduleDraw(viewKey);
       }, { passive: false });
 
       canvas.addEventListener("pointermove", (event) => {
         const rectangle = canvas.getBoundingClientRect();
-        const currentView = viewFor(this.state, viewKey, record.rows);
+        const currentView = viewFor(this.state, viewKey, rows);
         const target = currentView.minimum + ((event.clientX - rectangle.left) / rectangle.width) * (currentView.maximum - currentView.minimum);
         let nearest = null;
-        for (const row of record.rows) {
+        for (const row of rows) {
           if (!Number.isFinite(xValue(row))) continue;
           if (!nearest || Math.abs(xValue(row) - target) < Math.abs(xValue(nearest) - target)) nearest = row;
         }
@@ -413,7 +414,7 @@ export class ChartManager {
       canvas.addEventListener("pointerdown", (event) => {
         dragging = true;
         startX = event.clientX;
-        const currentView = viewFor(this.state, viewKey, record.rows);
+        const currentView = viewFor(this.state, viewKey, rows);
         startMinimum = currentView.minimum;
         startMaximum = currentView.maximum;
         canvas.setPointerCapture(event.pointerId);
@@ -421,7 +422,7 @@ export class ChartManager {
       });
       canvas.addEventListener("pointermove", (event) => {
         if (!dragging) return;
-        const currentView = viewFor(this.state, viewKey, record.rows);
+        const currentView = viewFor(this.state, viewKey, rows);
         const span = startMaximum - startMinimum;
         let minimum = startMinimum - ((event.clientX - startX) / canvas.getBoundingClientRect().width) * span;
         let maximum = minimum + span;
@@ -472,10 +473,11 @@ export class ChartManager {
   renderRecordImages(record, service) {
     return (record.seriesSets ?? seriesSetsFor(record, service)).map((set) => {
       const series = normalizeSeries(set.series);
-      const [fullMin, fullMax] = fullTimeExtent(record.rows);
+      const rows = set.rows ?? record.rows;
+      const [fullMin, fullMax] = fullTimeExtent(rows);
       const view = { minimum: fullMin, maximum: fullMax, fullMin, fullMax };
       const canvas = document.createElement("canvas");
-      drawChart(canvas, record.rows, series, view, { width: 1100, height: 400, pixelRatio: 1, maxPoints: 6_000 });
+      drawChart(canvas, rows, series, view, { width: 1100, height: 400, pixelRatio: 1, maxPoints: 6_000 });
       return { title: set.title, dataUrl: canvas.toDataURL("image/png") };
     });
   }

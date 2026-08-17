@@ -1,4 +1,5 @@
-import { CONFIGS } from "../app/config-v062.js";
+import { CONFIGS } from "../app/config-runtime.js";
+import { pfkLegacyStepAlias } from "../criteria/pfk.js";
 
 export const REQUIRED_ROUTE_METADATA = ["TEST_SERVICE", "PLANT_TYPE", "STEP_ID"];
 export const PFK_CAMPAIGN_METADATA = [
@@ -27,7 +28,9 @@ export function resolveCsvRoute(metadata, configs = CONFIGS) {
   if (!config) {
     throw new Error(`Desteklenmeyen TEST_SERVICE/PLANT_TYPE: ${route.service}/${route.plant}`);
   }
+  const legacyPfkAlias = route.service === "PFK" ? pfkLegacyStepAlias(route.stepId) : null;
   let step = config.steps.find((candidate) => candidate.id === route.stepId);
+  if (!step && legacyPfkAlias) step = config.steps.find((candidate) => candidate.id === legacyPfkAlias.stepId);
   const legacySensitivityStepId = route.service === "PFK" && /^(SENS_|BESS_SENS_)/.test(route.stepId) ? route.stepId : "";
   if (!step && legacySensitivityStepId) step = config.steps.find((candidate) => candidate.id === "HASSASIYET");
   if (!step) {
@@ -38,7 +41,17 @@ export function resolveCsvRoute(metadata, configs = CONFIGS) {
     throw new Error("Kampanya/ünite metadata alanları yalnız PFK çok üniteli çalışma alanında kullanılabilir.");
   }
   const isPfkCampaign = route.service === "PFK" && markedCampaignFields.length > 0;
-  if (!isPfkCampaign) return { ...route, stepId: step.id, configKey, config, step, legacySensitivityStepId, isPfkCampaign: false };
+  if (!isPfkCampaign) return {
+    ...route,
+    stepId: step.id,
+    configKey,
+    config,
+    step,
+    legacySensitivityStepId,
+    legacyPfkStepId: legacyPfkAlias ? route.stepId : "",
+    legacyReserveEventId: legacyPfkAlias?.eventId ?? "",
+    isPfkCampaign: false
+  };
 
   const campaignMissing = PFK_CAMPAIGN_METADATA.filter((field) => !String(metadata[field] ?? "").trim());
   if (campaignMissing.length) {
@@ -70,7 +83,9 @@ export function resolveCsvRoute(metadata, configs = CONFIGS) {
       unitCount,
       eventId: String(metadata.EVENT_ID).trim(),
       runId: String(metadata.RUN_ID).trim(),
-      legacySensitivityStepId
+      legacySensitivityStepId,
+      legacyPfkStepId: legacyPfkAlias ? route.stepId : "",
+      legacyReserveEventId: legacyPfkAlias?.eventId ?? ""
     }
   };
 }

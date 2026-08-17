@@ -1,4 +1,4 @@
-﻿# YHDA_VERSION=0.6.5
+﻿# YHDA_VERSION=0.7.0
 # TEST_SERVICE=RGDH
 # PLANT_TYPE=RESGES
 # STEP_ID=VCTRL_MINUS1
@@ -16,7 +16,7 @@
 # CALIBRATION_DATE=2026-02-01
 # CALIBRATION_CERT_NO=YHDA-CAL-2026-001
 # TEST_ENGINEER=Sentetik Test Verisi
-# REPORT_PREPARED_BY=YHDA v0.6.5
+# REPORT_PREPARED_BY=YDA v0.7.0
 # RECORDING_COMPUTER=Saha Dizüstü Bilgisayarı
 # SAMPLE_PERIOD_MS=100
 # VOLTAGE_DROOP_PERCENT=4
@@ -29,6 +29,7 @@
 # Q_REQUIRED_UE_MVAR=-33
 # TOTAL_UNIT_COUNT=20
 # ONLINE_UNIT_COUNT=20
+# YDA_VERSION=0.7.0
 ZAMAN;SIRA_NO;system_voltage_kv;voltage_reference_kv;total_active_power_mw;total_reactive_power_mvar;main_source_active_power_mw;main_source_reactive_power_mvar;aux_source_active_power_mw;aux_source_reactive_power_mvar
 16.8.2026 08:59:40,0s;1;153,995266;154,000000;70,004982;-0,002320;70,004982;-0,002320;0;0
 16.8.2026 08:59:40,1s;2;154,002489;154,000000;69,982264;-0,001653;69,982264;-0,001653;0;0

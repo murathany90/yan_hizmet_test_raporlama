@@ -3,7 +3,7 @@ import { basename, extname, relative, resolve, sep } from "node:path";
 import { hasUtf8Bom, parseCsv } from "../src/csv/parser.js";
 import { resolveCsvRoute } from "../src/csv/metadata.js";
 import { validateParsedCsv } from "../src/csv/validator.js";
-import { CONFIGS } from "../src/app/config-v062.js";
+import { CONFIGS } from "../src/app/config-runtime.js";
 
 const root = resolve(import.meta.dirname, "..");
 const templateRoot = resolve(root, "CSV_Sablonlari");

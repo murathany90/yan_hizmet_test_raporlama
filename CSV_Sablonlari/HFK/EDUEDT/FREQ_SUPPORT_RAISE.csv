@@ -1,4 +1,4 @@
-﻿# YHDA_VERSION=0.6.5
+﻿# YHDA_VERSION=0.7.0
 # TEST_SERVICE=HFK
 # PLANT_TYPE=EDUEDT
 # STEP_ID=FREQ_SUPPORT_RAISE
@@ -25,5 +25,6 @@
 # RECORDING_COMPUTER=Saha Dizüstü Bilgisayarı
 # CALIBRATION_CERT_NO=
 # SOURCE_STATUS=Teknik kriter mevcut; ayrıntılı resmî test rapor formatı sağlanmamıştır
+# YDA_VERSION=0.7.0
 ZAMAN;SIRA_NO;frequency_hz;active_power_mw;soc_pct;stored_energy_mwh;dc_power_mw;rocof_hz_s;trigger;tie_line_flow_mw;voltage_kv
 16.8.2026 00:00:00,0s;1;50,000;;;;;;;;

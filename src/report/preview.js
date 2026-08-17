@@ -1,13 +1,15 @@
 import { escapeHtml } from "../utils/text.js";
 import { isMinutesReport } from "../app/settings.js";
+import { recordsForReportSection } from "./record-selection.js";
 
 const esc = (value) => escapeHtml(String(value ?? ""));
 const statusBadge = (status) => `<span class="status ${status === "GEÇTİ" ? "pass" : status === "KALDI" ? "fail" : status.includes("TASLAK") || status.includes("ÖN") ? "draft" : "info"}">${esc(status)}</span>`;
 
-function recordsFor(model, selection = []) {
-  if (Array.isArray(selection)) return model.records.filter((record) => selection.includes(record.stepId));
-  if (selection.recordKeys?.length) return model.records.filter((record) => selection.recordKeys.includes(record.recordKey));
-  return model.records.filter((record) => selection.stepIds?.includes(record.stepId));
+const recordsFor = recordsForReportSection;
+function certificateReserveRows(model) {
+  return model.records.flatMap((record) => record.events?.length
+    ? record.events.map((event) => ({ ...record, name: `${record.name} — ${event.label}`, status: event.status, metrics: { ...event.metrics, delaySeconds: event.metrics.delaySeconds, durationSeconds: event.metrics.sustainSeconds, trpA: event.metrics.trp?.TRP_A?.percentage, trpB: event.metrics.trp?.TRP_B?.percentage, trpC: event.metrics.trp?.TRP_C?.percentage } }))
+    : (record.stepId.includes("NEG200") || record.stepId.includes("POS200") ? [record] : []));
 }
 function summaryTable(records) {
   if (!records.length) return `<div class="warning-note">Bu bölüm için yüklenmiş test kaydı yok.</div>`;
@@ -37,7 +39,7 @@ function minutesContent(model) {
   return `<p>${esc(model.documentText.minutesIntroduction)}</p><p>${esc(model.documentText.operationSafety)}</p><p>${esc(model.documentText.testMethod)}</p><h4>Santral / ünite detayları</h4><dl class="report-kv"><dt>Türbin / jeneratör</dt><dd>${esc(meta.TURBINE_GENERATOR_DESCRIPTION || "—")}</dd><dt>Nominal güç</dt><dd>${esc(meta.PNOM_MW || "—")} MW</dd><dt>İşletme modu</dt><dd>${esc(meta.UNIT_OPERATION_MODE || meta.PFK_OPERATION_MODE || "—")}</dd><dt>Frekans simülasyonu</dt><dd>${esc(meta.SIGNAL_GENERATOR || "—")}</dd><dt>Örnekleme</dt><dd>Yüklenen CSV kayıtlarından doğrulanır</dd></dl>`;
 }
 function certificate(model) {
-  const rows = model.records.filter((record) => record.stepId.includes("NEG200") || record.stepId.includes("POS200")).map((record) => `<tr><td>${esc(record.name)}</td><td>${esc(model.metadata.PNOM_MW)}</td><td>${record.stepId.includes("MAX") ? esc(model.metadata.PSET_MAX_MW) : esc(model.metadata.PSET_MIN_MW)}</td><td>${esc(model.metadata.RPMAX_MW)}</td><td>${esc(record.metrics.delaySeconds)}</td><td>${esc(record.metrics.durationSeconds)}</td><td>${esc(record.metrics.trpA)}</td><td>${esc(record.metrics.trpB)}</td><td>${esc(record.metrics.trpC)}</td><td>${esc(model.metadata.DEADBAND_MHZ)}</td><td>${statusBadge(record.status)}</td></tr>`).join("");
+  const rows = certificateReserveRows(model).map((record) => `<tr><td>${esc(record.name)}</td><td>${esc(model.metadata.PNOM_MW)}</td><td>${record.stepId.includes("MAX") ? esc(model.metadata.PSET_MAX_MW) : esc(model.metadata.PSET_MIN_MW)}</td><td>${esc(model.metadata.RPMAX_MW)}</td><td>${esc(record.metrics.delaySeconds)}</td><td>${esc(record.metrics.durationSeconds)}</td><td>${esc(record.metrics.trpA)}</td><td>${esc(record.metrics.trpB)}</td><td>${esc(record.metrics.trpC)}</td><td>${esc(model.metadata.DEADBAND_MHZ)}</td><td>${statusBadge(record.status)}</td></tr>`).join("");
   const watermark = model.watermark ? `<span class="certificate-watermark" style="opacity:${model.watermark.opacity}">${esc(model.watermark.text)}</span>` : "";
   return `<section class="certificate-page">${watermark}${model.assets.logoDataUrl ? `<img class="certificate-logo" src="${model.assets.logoDataUrl}" alt="TEİAŞ amblemi">` : ""}<p class="certificate-number">Sertifika no: ${esc(model.metadata.REPORT_NO || "—")}</p><h2>${esc(model.title)}</h2><p>${esc(model.documentText.certificateIntroduction)}</p><dl class="report-kv"><dt>Tesis</dt><dd>${esc(model.metadata.TESIS_ADI)}</dd><dt>Ünite</dt><dd>${esc(`${model.metadata.UNIT_ID || "Tesis kapsamı"} — ${model.metadata.UNIT_NAME || model.metadata.UNIT_ID || ""}`)}</dd><dt>Test tarih aralığı</dt><dd>${esc(model.metadata.TEST_DATE)}</dd><dt>Belge durumu</dt><dd>${statusBadge(model.officialStatus)}</dd></dl><h4>Test cihazı bilgileri</h4>${technicalTables(model).split("<h4>Kanal tanımları")[0]}<p class="draft-warning">${esc(model.documentText.draftWarning || "İMZA ÖNCESİ / TASLAK")}</p></section><section class="certificate-page">${watermark}<h2>SONUÇ TABLOSU</h2><div class="table-wrap certificate-result"><table><thead><tr><th>Test</th><th>Pnom</th><th>Pset</th><th>ΔP</th><th>Etkinleşme s</th><th>Sürdürme s</th><th>TRP A</th><th>TRP B</th><th>TRP C</th><th>Ölü bant</th><th>Sonuç</th></tr></thead><tbody>${rows || "<tr><td colspan=11>Yüklenmiş rezerv testi yok.</td></tr>"}</tbody></table></div><p>${esc(model.documentText.certificateResult)}</p><p>${esc(model.documentText.certificateValidityText)}</p><p>Düzenlenme tarihi: ${new Date().toLocaleDateString("tr-TR")}</p><div class="report-signatures">${model.signatures.map((signature) => `<div class="report-signature"><strong>${esc(signature.role)}</strong><br>${esc(signature.name)}</div>`).join("")}</div><p class="draft-warning">${esc(model.documentText.draftWarning || "İMZA ÖNCESİ / TASLAK")}</p></section>`;
 }
@@ -62,5 +64,6 @@ export function renderReportPreview(model) {
     else { const records = recordsFor(model, section); content = `${summaryTable(records)}${recordCharts(records)}`; }
     return `<section class="report-section"><h3>${esc(section.heading)}</h3>${content}</section>`;
   }).join("");
-  return `${cover}<section class="report-section"><h3>YÜKLEME VE TAMLIK DURUMU</h3>${model.missingSteps.length ? `<div class="warning-note">Eksik test adımları: ${model.missingSteps.map((step) => esc(step.stepId)).join(", ")}</div>` : `<div class="source-note">Beklenen ${model.expectedStepCount} test adımının tamamı yüklendi.</div>`}${isMinutes ? "" : `<p>${esc(model.documentText.reportIntroduction)}</p>`}<p>${esc(model.reportNote)}</p></section>${sections}<section class="report-section"><h3>İMZA ALANLARI</h3><div class="report-signatures">${model.signatures.map((signature) => `<div class="report-signature"><strong>${esc(signature.role)}</strong><br>${esc(signature.name)}</div>`).join("")}</div></section>`;
+  const completeness = model.completeness?.length ? `<div class="warning-note">Taslak / eksik bilgi: ${model.completeness.map((item) => esc(item.label)).join(", ")}</div>` : "";
+  return `${cover}<section class="report-section"><h3>YÜKLEME VE TAMLIK DURUMU</h3>${model.missingSteps.length ? `<div class="warning-note">Eksik test adımları: ${model.missingSteps.map((step) => esc(step.stepId)).join(", ")}</div>` : `<div class="source-note">Beklenen ${model.expectedStepCount} test adımının tamamı yüklendi.</div>`}${completeness}${isMinutes ? "" : `<p>${esc(model.documentText.reportIntroduction)}</p>`}<p>${esc(model.reportNote)}</p></section>${sections}<section class="report-section"><h3>İMZA ALANLARI</h3><div class="report-signatures">${model.signatures.map((signature) => `<div class="report-signature"><strong>${esc(signature.role)}</strong><br>${esc(signature.name)}</div>`).join("")}</div></section>`;
 }

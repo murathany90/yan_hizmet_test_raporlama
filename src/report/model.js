@@ -1,4 +1,4 @@
-import { REPORT_VARIABLES } from "../app/config-v062.js";
+import { REPORT_VARIABLES } from "../app/config-runtime.js";
 import { documentTextTemplates, interpolateDocumentText } from "../app/settings.js";
 import { inferUnit } from "../utils/text.js";
 import { isDraftMode } from "../criteria/procedures.js";
@@ -55,11 +55,25 @@ function technicalData(metadata, records) {
   };
 }
 
-function officialStatus(records, missingSteps, draft) {
+function officialStatus(records, missingSteps, draft, completeness = []) {
   if (draft) return "TASLAK / İNCELEME GEREKLİ";
+  if (completeness.length) return "TASLAK / EKSİK BİLGİ";
   if (missingSteps.length || !records.length) return "İNCELEME GEREKLİ";
   if (records.some((record) => ["KALDI", "İNCELEME GEREKLİ", "TEKNİK ÖN DEĞERLENDİRME"].includes(record.status))) return "İNCELEME GEREKLİ";
   return records.every((record) => record.status === "GEÇTİ") ? "İMZA ÖNCESİ" : "İNCELEME GEREKLİ";
+}
+
+function completenessChecks(service, metadata, records, missingSteps) {
+  if (service !== "PFK") return [];
+  const required = [
+    ["TESIS_ADI", "Tesis adı"], ["UNIT_ID", "Ünite kimliği"], ["PNOM_MW", "Pnom"], ["RPMAX_MW", "RPmax"],
+    ["REPORT_NO", "Rapor numarası"], ["TEST_DATE", "Test tarihi"], ["TEST_TEAM", "Test katılımcıları"]
+  ];
+  const missingMetadata = required.filter(([key]) => !String(metadata[key] ?? "").trim()).map(([key, label]) => ({ kind: "metadata", key, label }));
+  const missingEvents = records.flatMap((record) => record.stepId === "MAKSIMUM_REZERV" || record.stepId === "MINIMUM_REZERV"
+    ? ["NEG200", "POS200"].filter((eventId) => !record.events?.some((event) => event.eventId === eventId)).map((eventId) => ({ kind: "event", key: `${record.stepId}/${eventId}`, label: `${record.name}: ${eventId} olayı` }))
+    : []);
+  return [...missingMetadata, ...missingEvents, ...missingSteps.map((step) => ({ kind: "step", key: step.stepId, label: step.name }))];
 }
 
 function evaluationStatus(records, missingSteps, draft) {
@@ -124,6 +138,26 @@ function applyDefaults(metadata, settings) {
   };
 }
 
+function eventReportRecord(record, event, chartProvider) {
+  const eventLabel = event.eventId === "NEG200" ? "Δf = −200 mHz" : "Δf = +200 mHz";
+  const synthetic = {
+    ...record,
+    name: `${record.name} — ${eventLabel}`,
+    rows: event.chartRows ?? record.rows,
+    eventAnalysis: event,
+    analysis: { status: event.status, detail: event.detail, metrics: event }
+  };
+  const { chartRows, ...metrics } = event;
+  return {
+    eventId: event.eventId,
+    label: eventLabel,
+    status: event.status,
+    detail: event.detail,
+    metrics,
+    charts: chartProvider ? chartProvider(synthetic) : []
+  };
+}
+
 export function buildReportModel({ service, plant, config, metadata, reportType, reportNote, records, chartProvider, logoDataUrl = "", campaign = null, settings }) {
   const documentSettings = settings ?? { texts: {}, defaults: {}, defaultSignatureRoles: "" };
   const expectedIds = config.steps.map((step) => step.id);
@@ -138,16 +172,22 @@ export function buildReportModel({ service, plant, config, metadata, reportType,
   const missingSteps = activeCampaign
     ? activeCampaign.units.filter((unit) => unit.included !== false).flatMap((unit) => config.steps.filter((step) => !activeRecords.some((record) => record.step.id === step.id && record.sourceMetadata?.UNIT_ID === unit.unitId)).map((step) => ({ stepId: `${unit.unitId}/${step.id}`, name: step.name })))
     : config.steps.filter((step) => !activeRecords.some((record) => record.step.id === step.id)).map((step) => ({ stepId: step.id, name: step.name }));
-  const reportRecords = activeRecords.map((record) => ({
+  const reportRecords = activeRecords.map((record) => {
+    const { events: rawEvents = [], ...analysisMetrics } = record.analysis.metrics ?? {};
+    const events = rawEvents.map((event) => eventReportRecord(record, event, chartProvider));
+    return ({
     stepId: record.step.id,
     recordKey: record.sourceMetadata?.CAMPAIGN_ID ? [record.sourceMetadata.CAMPAIGN_ID, record.sourceMetadata.UNIT_ID, record.step.id, record.sourceMetadata.RUN_ID].join("\u001f") : "",
     name: record.sourceMetadata?.CAMPAIGN_ID && record.sourceMetadata?.UNIT_ID ? `${record.sourceMetadata.UNIT_ID} — ${record.step.name}` : record.step.name,
     kind: record.step.kind, filename: record.name, rowCount: record.rows.length, status: record.analysis.status, detail: record.analysis.detail,
-    metrics: { ...(record.analysis.metrics ?? {}), finalActivePowerMw: record.rows.at(-1)?.active_power_mw },
+    metrics: { ...analysisMetrics, finalActivePowerMw: record.rows.at(-1)?.active_power_mw },
     warnings: record.validation?.warnings ?? [], evidence: record.evidence ?? null,
     campaign: record.sourceMetadata?.CAMPAIGN_ID ? { campaignId: record.sourceMetadata.CAMPAIGN_ID, unitId: record.sourceMetadata.UNIT_ID, unitName: record.sourceMetadata.UNIT_NAME, runId: record.sourceMetadata.RUN_ID } : null,
+    events,
     charts: chartProvider ? chartProvider(record) : []
-  }));
+    });
+  });
+  const completeness = completenessChecks(service, effectiveMetadata, reportRecords, missingSteps);
   const draft = isDraftMode(service, plant);
   const values = {
     TESIS_ADI: effectiveMetadata.TESIS_ADI, COMPANY: effectiveMetadata.COMPANY, UNIT_ID: effectiveMetadata.UNIT_ID,
@@ -159,10 +199,10 @@ export function buildReportModel({ service, plant, config, metadata, reportType,
   const text = Object.fromEntries(Object.entries(documentTextTemplates(documentSettings, service, reportType)).map(([key, template]) => [key, interpolateDocumentText(template, values)]));
   const roles = String(documentSettings.defaultSignatureRoles || "TEİAŞ Gözlemcisi; Tesis Yetkilisi; Testi Gerçekleştiren").split(";").map((role) => role.trim()).filter(Boolean);
   return Object.freeze({
-    schemaVersion: 4, appVersion: "0.6.5", createdAt: new Date().toISOString(), service, plant, configKey: `${service}:${plant}`,
+    schemaVersion: 5, appVersion: "0.7.0", createdAt: new Date().toISOString(), service, plant, configKey: `${service}:${plant}`,
     reportType, title: reportTitle(service, plant, reportType), draft, reportNote, metadata: effectiveMetadata,
     expectedStepCount: activeCampaign ? config.steps.length * activeCampaign.units.filter((unit) => unit.included !== false).length : expectedIds.length,
-    loadedStepCount: reportRecords.length, missingSteps, overallStatus: evaluationStatus(reportRecords, missingSteps, draft), officialStatus: officialStatus(reportRecords, missingSteps, draft),
+    loadedStepCount: reportRecords.length, missingSteps, completeness, overallStatus: evaluationStatus(reportRecords, missingSteps, draft), officialStatus: officialStatus(reportRecords, missingSteps, draft, completeness),
     records: reportRecords, variables: variableRows(`${service}:${plant}`, config, effectiveMetadata), technicalData: technicalData(effectiveMetadata, activeRecords),
     campaign: activeCampaign, campaignSummary: campaignSummary(activeRecords, activeCampaign, effectiveMetadata),
     evidence: reportRecords.map((record) => record.evidence).filter(Boolean), sections: sectionsForReport({ service, plant, reportType, records: reportRecords, campaign: activeCampaign }),

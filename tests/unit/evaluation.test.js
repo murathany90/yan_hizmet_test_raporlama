@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { evaluateRecord } from "../../src/analysis/evaluate.js";
+import { CONFIGS } from "../../src/app/config-runtime.js";
 
 function record(step, rows) {
   return { step, rows };
@@ -18,6 +19,29 @@ describe("service evaluation", () => {
     expect(result.status).toBe("GEÇTİ");
     expect(result.metrics.t100Seconds).toBeLessThanOrEqual(30);
     expect(result.metrics.trpC).toBeGreaterThanOrEqual(98);
+  });
+
+  it("segments a canonical four-CSV reserve source into ordered −200/+200 mHz events", () => {
+    const step = CONFIGS["PFK:HES"].steps.find((item) => item.id === "MAKSIMUM_REZERV");
+    const rows = Array.from({ length: 18_901 }, (_, index) => {
+      const time_s = index / 10;
+      const secondEvent = time_s >= 950;
+      const inEvent = (time_s >= 20 && time_s < 920) || (time_s >= 950 && time_s < 1850);
+      const direction = secondEvent ? -1 : 1;
+      const start = secondEvent ? 950 : 20;
+      const response = inEvent ? 25 * Math.min(1, Math.max(0, (time_s - start - 1) / 20)) : 0;
+      return {
+        time_s,
+        test_frequency_hz: inEvent ? (direction > 0 ? 49.8 : 50.2) : 50,
+        grid_frequency_hz: 50,
+        active_power_mw: 400 + direction * response,
+        active_power_reference_mw: 400 + direction * response
+      };
+    });
+    const result = evaluateRecord(record(step, rows), { service: "PFK", plant: "HES", metadata: { PNOM_MW: 500, RPMAX_MW: 25 } });
+    expect(result.status).toBe("GEÇTİ");
+    expect(result.metrics.events.map((event) => event.eventId)).toEqual(["NEG200", "POS200"]);
+    expect(result.metrics.events.every((event) => event.trp.TRP_C.percentage >= 90)).toBe(true);
   });
 
   it("keeps HFK output in technical pre-evaluation status", () => {

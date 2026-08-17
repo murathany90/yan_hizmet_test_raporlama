@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONFIGS } from "../../src/app/config-v062.js";
+import { CONFIGS } from "../../src/app/config-runtime.js";
 import { buildReportModel } from "../../src/report/model.js";
 import { createPdfBuffer, makePdfDefinition } from "../../src/report/pdf.js";
 import { createDocxBlob, createDocxBuffer } from "../../src/report/docx.js";
@@ -66,13 +66,13 @@ describe("report generators", () => {
       records: [{ name: "u1.csv", step: config.steps[0], rows: [{ zaman: "12.3.2026 11:09:19,1s", sira_no: 1, timestamp_ms: 1773302959100, time_s: 0, active_power_mw: 50 }], sourceMetadata: { CAMPAIGN_ID: "C1", UNIT_ID: "U1", UNIT_NAME: "Ünite 1", RUN_ID: "R1" }, analysis: { status: "GEÇTİ", detail: "ok", metrics: {} }, validation: { warnings: [] } }]
     });
     expect(model.campaignSummary.units).toHaveLength(2);
-    expect(model.officialStatus).toBe("İNCELEME GEREKLİ");
+    expect(model.officialStatus).toBe("TASLAK / EKSİK BİLGİ");
     expect(model.sections.map((section) => section.type)).toContain("campaign-summary");
   });
 
   it("keeps PFK campaign report records scoped by campaign, unit, step and run", () => {
     const config = CONFIGS["PFK:HES"];
-    const step = config.steps.find((item) => item.id === "RES_MAX_NEG200");
+    const step = config.steps.find((item) => item.id === "MAKSIMUM_REZERV");
     const makeRecord = (unitId) => ({ name: `${unitId}.csv`, step, rows: [], sourceMetadata: { CAMPAIGN_ID: "C1", UNIT_ID: unitId, UNIT_NAME: `Ünite ${unitId}`, RUN_ID: "R1" }, analysis: { status: "GEÇTİ", detail: unitId, metrics: {} }, validation: { warnings: [] } });
     const model = buildReportModel({
       service: "PFK", plant: "HES", config, metadata: {}, reportType: "Performans Test Raporu", reportNote: "", chartProvider: () => [],
@@ -80,8 +80,8 @@ describe("report generators", () => {
       records: [makeRecord("U1"), makeRecord("U2"), { ...makeRecord("U1"), name: "legacy-U1.csv", sourceMetadata: { CAMPAIGN_ID: "C0", UNIT_ID: "U1", UNIT_NAME: "Eski Ünite", RUN_ID: "R0" } }]
     });
     const maximum = model.sections.find((section) => section.heading.startsWith("C)"));
-    expect(maximum.groups[0].items[0].recordKeys).toEqual(["C1\u001fU1\u001fRES_MAX_NEG200\u001fR1"]);
-    expect(maximum.groups[1].items[0].recordKeys).toEqual(["C1\u001fU2\u001fRES_MAX_NEG200\u001fR1"]);
+    expect(maximum.groups[0].items[0].recordKeys).toEqual(["C1\u001fU1\u001fMAKSIMUM_REZERV\u001fR1"]);
+    expect(maximum.groups[1].items[0].recordKeys).toEqual(["C1\u001fU2\u001fMAKSIMUM_REZERV\u001fR1"]);
     expect(model.records.map((record) => record.filename)).not.toContain("legacy-U1.csv");
     const preview = renderReportPreview(model);
     const firstUnitSection = preview.slice(preview.indexOf("C.1"), preview.indexOf("C.2"));
@@ -91,7 +91,7 @@ describe("report generators", () => {
 
   it("uses unit-specific certificate metadata and scoped settings in preview, PDF and DOCX", async () => {
     const config = CONFIGS["PFK:HES"];
-    const step = config.steps.find((item) => item.id === "RES_MAX_NEG200");
+    const step = config.steps.find((item) => item.id === "MAKSIMUM_REZERV");
     const settings = { ...DEFAULT_DOCUMENT_SETTINGS, scopedTexts: { PFK: { certificate: { certificateValidityText: "U2 için yalnız bu geçerlilik metni kullanılmalıdır." } } } };
     const model = buildReportModel({
       service: "PFK", plant: "HES", config, metadata: { TESIS_ADI: "Test Tesisi", UNIT_ID: "U2", UNIT_NAME: "Ünite İki", PNOM_MW: "90", RPMAX_MW: "12", REPORT_NO: "U2-01" },

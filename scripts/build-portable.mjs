@@ -16,14 +16,14 @@ function run(program, args, cwd = root) {
 if (process.platform === "win32") run(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm.cmd run tauri -- build --no-bundle"]);
 else run("npm", ["run", "tauri", "--", "build", "--no-bundle"]);
 
-const executable = resolve(root, "src-tauri", "target", "release", "teias-yhda.exe");
+const executable = resolve(root, "src-tauri", "target", "release", "yda.exe");
 if (!existsSync(executable)) throw new Error(`Taşınabilir uygulama bulunamadı: ${executable}`);
 
 const now = new Date();
 const pad = (value) => String(value).padStart(2, "0");
 const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 const outputDirectory = resolve(root, "dist");
-const output = resolve(outputDirectory, `TEIAS-YHDA_v${packageJson.version}_portable_${stamp}.exe`);
+const output = resolve(outputDirectory, `YDA_v${packageJson.version}_portable_${stamp}.exe`);
 mkdirSync(outputDirectory, { recursive: true });
 copyFileSync(executable, output);
 console.log(`Portable EXE: ${output}`);

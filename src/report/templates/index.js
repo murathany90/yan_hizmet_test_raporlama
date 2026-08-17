@@ -26,26 +26,43 @@ function campaignGroups(records, campaign, prefix, predicate, withDirections = f
     const number = `${prefix}.${index + 1}`;
     const heading = `${number} ${unit.unitId} — ${unit.unitName}`;
     if (!withDirections) return { heading, recordKeys: recordKeys(unitRecords) };
-    const negative = unitRecords.find((record) => record.stepId.includes("NEG200"));
-    const positive = unitRecords.find((record) => record.stepId.includes("POS200"));
+    const negative = unitRecords.filter((record) => record.events?.some((event) => event.eventId === "NEG200"));
+    const positive = unitRecords.filter((record) => record.events?.some((event) => event.eventId === "POS200"));
+    const negativeRecords = negative.length ? negative : unitRecords;
+    const positiveRecords = positive.length ? positive : unitRecords;
     return {
       heading,
       items: [
-        { heading: `${number}.a Δf = -200 mHz`, recordKeys: negative ? recordKeys([negative]) : [] },
-        { heading: `${number}.b Δf = +200 mHz`, recordKeys: positive ? recordKeys([positive]) : [] }
+        { heading: `${number}.a Δf = −200 mHz`, recordKeys: recordKeys(negativeRecords), eventId: "NEG200" },
+        { heading: `${number}.b Δf = +200 mHz`, recordKeys: recordKeys(positiveRecords), eventId: "POS200" }
       ]
     };
   });
 }
 
-function pfkReportSections(records, campaign) {
+function reserveGroups(records, prefix, predicate) {
+  const selected = recordsFor(records, predicate);
+  return [{
+    heading: `${prefix}.1 Ünite / tesis kapsamı`,
+    items: [
+      { heading: `${prefix}.1.a Δf = −200 mHz`, stepIds: stepIds(selected), eventId: "NEG200" },
+      { heading: `${prefix}.1.b Δf = +200 mHz`, stepIds: stepIds(selected), eventId: "POS200" }
+    ]
+  }];
+}
+
+function pfkReportSections(records, campaign, plant) {
+  const pairedReserve = plant !== "EDUEDT";
+  const maximum = (record) => pairedReserve ? record.stepId === "MAKSIMUM_REZERV" : record.stepId.includes("MAX");
+  const minimum = (record) => pairedReserve ? record.stepId === "MINIMUM_REZERV" : record.stepId.includes("MIN");
+  const validation = (record) => pairedReserve ? record.stepId === "DOGRULAMA_24H" : record.stepId.includes("VALIDATION");
   const top = [
     { heading: "A) TEST KATILIMCI LİSTESİ", type: "participants" },
     { heading: "B) TEKNİK VERİLER", type: "technical" },
-    { heading: "C) MAKSİMUM ÇIKIŞ GÜCÜ SEVİYESİ REZERV TESTLERİ", type: campaign ? "grouped-records" : "records", groups: campaign ? campaignGroups(records, campaign, "C", (record) => record.stepId.includes("MAX"), true) : undefined, stepIds: campaign ? undefined : stepIds(recordsFor(records, (record) => record.stepId.includes("MAX"))) },
-    { heading: "D) MİNİMUM ÇIKIŞ GÜCÜ SEVİYESİ REZERV TESTLERİ", type: campaign ? "grouped-records" : "records", groups: campaign ? campaignGroups(records, campaign, "D", (record) => record.stepId.includes("MIN"), true) : undefined, stepIds: campaign ? undefined : stepIds(recordsFor(records, (record) => record.stepId.includes("MIN"))) },
+    { heading: "C) MAKSİMUM ÇIKIŞ GÜCÜ SEVİYESİ REZERV TESTLERİ", type: pairedReserve ? "grouped-records" : (campaign ? "grouped-records" : "records"), groups: pairedReserve ? (campaign ? campaignGroups(records, campaign, "C", maximum, true) : reserveGroups(records, "C", maximum)) : (campaign ? campaignGroups(records, campaign, "C", maximum) : undefined), stepIds: !pairedReserve && !campaign ? stepIds(recordsFor(records, maximum)) : undefined },
+    { heading: "D) MİNİMUM ÇIKIŞ GÜCÜ SEVİYESİ REZERV TESTLERİ", type: pairedReserve ? "grouped-records" : (campaign ? "grouped-records" : "records"), groups: pairedReserve ? (campaign ? campaignGroups(records, campaign, "D", minimum, true) : reserveGroups(records, "D", minimum)) : (campaign ? campaignGroups(records, campaign, "D", minimum) : undefined), stepIds: !pairedReserve && !campaign ? stepIds(recordsFor(records, minimum)) : undefined },
     { heading: "E) HASSASİYET TESTLERİ", type: campaign ? "grouped-records" : "records", groups: campaign ? campaignGroups(records, campaign, "E", (record) => record.stepId === "HASSASIYET") : undefined, stepIds: campaign ? undefined : stepIds(recordsFor(records, (record) => record.stepId === "HASSASIYET")) },
-    { heading: "F) 24 SAATLİK DOĞRULAMA", type: campaign ? "grouped-records" : "records", groups: campaign ? campaignGroups(records, campaign, "F", (record) => record.stepId.includes("VALIDATION")) : undefined, stepIds: campaign ? undefined : stepIds(recordsFor(records, (record) => record.stepId.includes("VALIDATION"))) }
+    { heading: "F) 24 SAATLİK DOĞRULAMA", type: campaign ? "grouped-records" : "records", groups: campaign ? campaignGroups(records, campaign, "F", validation) : undefined, stepIds: campaign ? undefined : stepIds(recordsFor(records, validation)) }
   ];
   if (campaign) top.push({ heading: "PFK KAMPANYA / ÜNİTE ÖZETİ", type: "campaign-summary" });
   top.push({ heading: "G) SONUÇ", type: "conclusion" }, { heading: "HAM CSV SHA-256 KANIT MANİFESTİ", type: "evidence" });
@@ -83,7 +100,7 @@ function rgdhSections(records, plant) {
 export function sectionsForReport({ service, plant, reportType, records, campaign }) {
   if (reportType.includes("Sertifika")) return [{ heading: "SERTİFİKA", type: "certificate" }];
   if (isMinutesReport(reportType)) return minutesSections(records);
-  if (service === "PFK") return pfkReportSections(records, campaign);
+  if (service === "PFK") return pfkReportSections(records, campaign, plant);
   if (service === "RGDH") return rgdhSections(records, plant);
   if (service === "SFK") return [
     { heading: "1. GİRİŞ VE TEST KAPSAMI", type: "participants" }, { heading: "2. TEKNİK VERİLER", type: "technical" },

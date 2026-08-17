@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { CONFIGS } from "../src/app/config-v062.js";
+import { CONFIGS } from "../src/app/config-runtime.js";
 import { DEFAULT_DOCUMENT_SETTINGS } from "../src/app/settings.js";
 import { buildReportModel } from "../src/report/model.js";
 import { createPdfBuffer } from "../src/report/pdf.js";
@@ -38,7 +38,7 @@ const model = buildReportModel({
     CITY: "İğdır",
     COMPANY: "Örnek Enerji Üretim A.Ş.",
     PNOM_MW: "500",
-    REPORT_NO: "TEİAŞ-YHDA-006",
+    REPORT_NO: "YDA-006",
     TEST_TEAM: "TEİAŞ / Tesis / Bağımsız Test Ekibi",
     REPORT_PREPARED_BY: "Test Mühendisi",
     TEST_ENGINEER: "Ölçüm ve Doğrulama Uzmanı"
@@ -59,10 +59,10 @@ const certificateModel = buildReportModel({
 const [pdf, docx, certificatePdf, certificateDocx] = await Promise.all([
   createPdfBuffer(model), createDocxBuffer(model), createPdfBuffer(certificateModel), createDocxBuffer(certificateModel)
 ]);
-writeFileSync(resolve(outputDirectory, "TEIAS-YHDA-QA.pdf"), pdf);
-writeFileSync(resolve(outputDirectory, "TEIAS-YHDA-QA.docx"), docx);
-writeFileSync(resolve(outputDirectory, "TEIAS-YHDA-QA-Sertifika.pdf"), certificatePdf);
-writeFileSync(resolve(outputDirectory, "TEIAS-YHDA-QA-Sertifika.docx"), certificateDocx);
+writeFileSync(resolve(outputDirectory, "YDA-QA.pdf"), pdf);
+writeFileSync(resolve(outputDirectory, "YDA-QA.docx"), docx);
+writeFileSync(resolve(outputDirectory, "YDA-QA-Sertifika.pdf"), certificatePdf);
+writeFileSync(resolve(outputDirectory, "YDA-QA-Sertifika.docx"), certificateDocx);
 writeFileSync(resolve(outputDirectory, "report-model.json"), JSON.stringify(model, null, 2), "utf8");
 console.log(`Generated PDF: ${pdf.byteLength} bytes`);
 console.log(`Generated DOCX: ${docx.byteLength} bytes`);

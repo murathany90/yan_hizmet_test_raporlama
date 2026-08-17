@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CONFIGS, MENU } from "../../src/app/config-v062.js";
+import { CONFIGS, MENU } from "../../src/app/config-runtime.js";
 import { inferUnit } from "../../src/utils/text.js";
 
 describe("UTF-8 integrity", () => {
   it("keeps critical Turkish UI and report phrases intact", () => {
     const index = readFileSync(resolve("index.html"), "utf8");
-    expect(index).toContain("TEİAŞ-YHDA");
+    expect(index).toContain("YDA (Yan Hizmetler Doğrulama Aracı)");
     expect(index).toContain("Yan Hizmetler Doğrulama Aracı");
     expect(index).toContain("Önizleme Oluştur");
     expect(MENU.map((item) => item.label).join(" ")).toContain("Sınırlı Frekans Hassasiyet Modu");

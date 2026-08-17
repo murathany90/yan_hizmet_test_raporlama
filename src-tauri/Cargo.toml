@@ -1,13 +1,13 @@
 [package]
-name = "teias-yhda"
-version = "0.6.5"
-description = "TEİAŞ Yan Hizmetler Doğrulama Aracı"
-authors = ["TEİAŞ-YHDA Contributors"]
+name = "yda"
+version = "0.7.0"
+description = "YDA (Yan Hizmetler Doğrulama Aracı)"
+authors = ["YDA Contributors"]
 edition = "2021"
 rust-version = "1.77.2"
 
 [lib]
-name = "teias_yhda_lib"
+name = "yda_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

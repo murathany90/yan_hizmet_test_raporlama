@@ -1,4 +1,5 @@
 import { isMinutesReport } from "../app/settings.js";
+import { recordsForReportSection } from "./record-selection.js";
 
 async function loadPdfMake() {
   const [pdfMakeModule, fontModule] = await Promise.all([import("pdfmake/build/pdfmake.js"), import("pdfmake/build/vfs_fonts.js")]);
@@ -12,11 +13,10 @@ const table = (headers, rows, widths, fontSize = 7) => {
   const emptyRow = () => headers.map((_, index) => index === 0 ? "Yüklenmiş kayıt yok" : "—");
   return { table: { headerRows: 1, widths, body: [headers, ...(rows.length ? rows : [emptyRow()])] }, layout: "lightHorizontalLines", fontSize, margin: [0, 4, 0, 8] };
 };
-const selected = (model, selection = []) => {
-  if (Array.isArray(selection)) return model.records.filter((record) => selection.includes(record.stepId));
-  if (selection.recordKeys?.length) return model.records.filter((record) => selection.recordKeys.includes(record.recordKey));
-  return model.records.filter((record) => selection.stepIds?.includes(record.stepId));
-};
+const selected = recordsForReportSection;
+const certificateReserveRows = (model) => model.records.flatMap((record) => record.events?.length
+  ? record.events.map((event) => ({ ...record, name: `${record.name} — ${event.label}`, status: event.status, metrics: { ...event.metrics, delaySeconds: event.metrics.delaySeconds, durationSeconds: event.metrics.sustainSeconds, trpA: event.metrics.trp?.TRP_A?.percentage, trpB: event.metrics.trp?.TRP_B?.percentage, trpC: event.metrics.trp?.TRP_C?.percentage } }))
+  : (record.stepId.includes("NEG200") || record.stepId.includes("POS200") ? [record] : []));
 const summaryTable = (records) => table(["Test adımı", "CSV", "Durum", "Hesap / not"], records.map((record) => [record.name, record.filename, record.status, record.detail]), ["*", 90, 58, "*"], 6.8);
 const evidenceTable = (model) => table(["Dosya", "SHA-256", "Ünite", "STEP_ID", "Satır", "Başlangıç", "Bitiş", "ms"], model.evidence.map((item) => [item.filename, item.sha256, item.unitId, item.stepId, String(item.rowCount), item.start, item.end, Number.isFinite(item.sampleMs) ? item.sampleMs.toFixed(3) : "—"]), [50, 105, 30, 55, 28, 75, 75, 24], 5.2);
 
@@ -49,7 +49,7 @@ function minutesContent(model) {
 }
 
 function certificateContent(model) {
-  const reserve = model.records.filter((record) => record.stepId.includes("NEG200") || record.stepId.includes("POS200"));
+  const reserve = certificateReserveRows(model);
   const device = model.technicalData.equipment[0] ?? {};
   const pageOne = [
     ...(model.assets.logoDataUrl ? [{ image: model.assets.logoDataUrl, fit: [70, 94], alignment: "center", margin: [0, 22, 0, 12] }] : []),
@@ -95,7 +95,7 @@ export function makePdfDefinition(model) {
   if (model.reportType.includes("Sertifika")) return {
     pageSize: "A4", pageMargins: [40, 42, 40, 38], defaultStyle: { font: "Roboto", fontSize: 9, color: "#172630" },
     watermark: model.watermark ? { text: model.watermark.text, color: "#005b9f", opacity: model.watermark.opacity, bold: true, fontSize: 54 } : undefined,
-    footer: (page) => ({ text: `TEİAŞ-YHDA v${model.appVersion} | ${page}/2`, alignment: "center", color: "#637585", fontSize: 7, margin: [0, 8, 0, 0] }), content: certificateContent(model)
+    footer: (page) => ({ text: `YDA v${model.appVersion} | ${page}/2`, alignment: "center", color: "#637585", fontSize: 7, margin: [0, 8, 0, 0] }), content: certificateContent(model)
   };
   const isMinutes = isMinutesReport(model.reportType);
   const content = [{ stack: [
@@ -109,7 +109,7 @@ export function makePdfDefinition(model) {
   content.push({ text: "İÇİNDEKİLER", style: "sectionHeading" }, { ol: model.sections.filter((section) => section.type !== "evidence").map((section) => section.heading), fontSize: 8.5, margin: [12, 4, 0, 12] }, { text: "YÜKLEME VE TAMLIK DURUMU", style: "sectionHeading" }, { text: model.missingSteps.length ? `Eksik test adımları: ${model.missingSteps.map((step) => step.stepId).join(", ")}` : `Beklenen ${model.expectedStepCount} test adımının tamamı yüklendi.`, color: model.missingSteps.length ? "#9b1c1c" : "#19724f", bold: true, fontSize: 8.5 }, ...(isMinutes ? [] : [{ text: model.documentText.reportIntroduction, fontSize: 8.2, margin: [0, 4, 0, 5] }]), { text: model.reportNote, fontSize: 8, margin: [0, 0, 0, 5] });
   model.sections.forEach((section) => { content.push({ text: section.heading, style: "sectionHeading" }, ...sectionContent(section, model)); });
   content.push({ text: "İMZA ALANLARI", style: "sectionHeading" }, { columns: model.signatures.map((signature) => ({ width: "*", stack: [{ text: "\n\n________________________", alignment: "center" }, { text: signature.role, bold: true, alignment: "center", fontSize: 7.5 }, { text: signature.name, alignment: "center", fontSize: 7.5 }] })), columnGap: 10 });
-  return { pageSize: "A4", pageMargins: [36, 48, 36, 42], defaultStyle: { font: "Roboto", fontSize: 9, color: "#172630" }, watermark: model.watermark ? { text: model.watermark.text, color: "#005b9f", opacity: model.watermark.opacity, bold: true, fontSize: 54 } : undefined, styles: { sectionHeading: { fontSize: 10, bold: true, color: "#244b64", fillColor: "#eaf2f7", margin: [0, 10, 0, 6] }, subHeading: { fontSize: 8.5, bold: true, color: "#244b64", margin: [0, 7, 0, 3] } }, footer: (currentPage, pageCount) => ({ text: `${model.settings.reportFooter || "TEİAŞ-YHDA"} | Sayfa ${currentPage}/${pageCount}`, alignment: "center", color: "#637585", fontSize: 7, margin: [0, 10, 0, 0] }), info: { title: model.title, author: "TEİAŞ-YHDA", subject: model.reportType }, content };
+  return { pageSize: "A4", pageMargins: [36, 48, 36, 42], defaultStyle: { font: "Roboto", fontSize: 9, color: "#172630" }, watermark: model.watermark ? { text: model.watermark.text, color: "#005b9f", opacity: model.watermark.opacity, bold: true, fontSize: 54 } : undefined, styles: { sectionHeading: { fontSize: 10, bold: true, color: "#244b64", fillColor: "#eaf2f7", margin: [0, 10, 0, 6] }, subHeading: { fontSize: 8.5, bold: true, color: "#244b64", margin: [0, 7, 0, 3] } }, footer: (currentPage, pageCount) => ({ text: `${model.settings.reportFooter || "YDA"} | Sayfa ${currentPage}/${pageCount}`, alignment: "center", color: "#637585", fontSize: 7, margin: [0, 10, 0, 0] }), info: { title: model.title, author: "YDA (Yan Hizmetler Doğrulama Aracı)", subject: model.reportType }, content };
 }
 
 export async function createPdfBuffer(model) {

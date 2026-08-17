@@ -1,4 +1,4 @@
-import { CONFIGS, DETAILED_CRITERIA, MENU } from "./app/config-v062.js";
+import { CONFIGS, DETAILED_CRITERIA, MENU } from "./app/config-runtime.js";
 import { TEIAS_LOGO_URL } from "./app/assets.js";
 import { AVAILABLE_PLACEHOLDERS, isMinutesReport } from "./app/settings.js";
 import {
@@ -134,7 +134,7 @@ function renderModeHeader() {
   elements.crumb.textContent = `${state.service} / ${state.plant}`;
   elements.workTitle.textContent = `${serviceName} — ${currentPlantLabel}`;
   const draft = isDraftMode(state.service, state.plant);
-  elements.modeTag.textContent = draft ? "Teknik Ön Değerlendirme / Taslak" : "YHDA Test Modu";
+  elements.modeTag.textContent = draft ? "Teknik Ön Değerlendirme / Taslak" : "YDA Test Modu";
   elements.modeTag.classList.toggle("draft", draft);
 }
 
@@ -343,7 +343,7 @@ async function fileBytes(file) {
 
 function metadataForForm(route, parsedMetadata) {
   const allowed = new Set(route.config.meta.map(([key]) => key));
-  return Object.fromEntries(Object.entries(parsedMetadata).filter(([key]) => allowed.has(key)));
+  return Object.fromEntries(Object.entries(parsedMetadata).filter(([key]) => allowed.has(key)).map(([key, value]) => [key, key === "REPORT_PREPARED_BY" ? String(value).replace(/^YHDA\b/i, "YDA") : value]));
 }
 
 async function processOneFile(file, expected) {
@@ -393,6 +393,8 @@ async function processOneFile(file, expected) {
     rows: validation.rows,
     validation,
     sourceMetadata: { ...parsed.metadata },
+    legacyPfkStepId: route.legacyPfkStepId,
+    legacyReserveEventId: route.legacyReserveEventId,
     evidence: await rawCsvEvidence({ bytes, filename: file.name, route, validation, rows: validation.rows }),
     _recordKey: key
   };
@@ -401,6 +403,14 @@ async function processOneFile(file, expected) {
     plant: route.plant,
     metadata: getModeMetadata(state, route.service, route.plant)
   });
+  record.evidence = {
+    ...record.evidence,
+    analysis: {
+      criteriaId: record.analysis.metrics?.criteriaId ?? "",
+      eventCount: record.analysis.metrics?.events?.length ?? 0,
+      sourceKind: "RAW_SOURCE"
+    }
+  };
   state.records.set(key, record);
   state.reportDirty = true;
   return { skipped: false, route, warnings: validation.warnings };
@@ -566,7 +576,7 @@ function criteriaCard(title, items, ordered = false) {
   const card = element("article", { className: "card criteria-card" });
   card.append(element("h3", { text: title }));
   const list = document.createElement(ordered ? "ol" : "ul");
-  for (const item of items) list.append(element("li", { text: item }));
+  for (const item of items) list.append(element("li", { text: String(item).replaceAll("YHDA", "YDA") }));
   card.append(list);
   return card;
 }
@@ -601,7 +611,7 @@ function renderCriteria() {
         stepDetails.className = "criteria-step";
         const stepSummary = document.createElement("summary");
         stepSummary.textContent = `${step.id}: ${step.name}`;
-        const body = element("div", { className: "criteria-step-content", text: (detailed?.steps?.[step.id] ?? ["Kanal, süre, örnekleme ve sonuç kanıtını ünite bazında doğrulayın."]).join(" ") });
+        const body = element("div", { className: "criteria-step-content", text: (detailed?.steps?.[step.id] ?? ["Kanal, süre, örnekleme ve sonuç kanıtını ünite bazında doğrulayın."]).join(" ").replaceAll("YHDA", "YDA") });
         stepDetails.append(stepSummary, body);
         unitDetails.append(stepDetails);
       });
@@ -1007,7 +1017,7 @@ function boot() {
   elements.teiasLogo.src = TEIAS_LOGO_URL;
   const native = isTauriRuntime();
   elements.runtimeBadge.textContent = native ? "Tauri Masaüstü" : "Web";
-  document.title = `TEİAŞ-YHDA v${APP_VERSION}`;
+  document.title = `YDA (Yan Hizmetler Doğrulama Aracı) v${APP_VERSION}`;
   elements.nativeBulkOpen.hidden = !native;
   bindEvents();
   renderWorkspace();

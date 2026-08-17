@@ -1,4 +1,38 @@
 export function seriesSetsFor(record, service) {
+  if (service === "PFK" && record.eventAnalysis) {
+    const label = record.eventAnalysis.eventId === "NEG200" ? "Δf = −200 mHz" : "Δf = +200 mHz";
+    return [{
+      title: `${label} olay analizi — güç, hedef ve tolerans bandı`,
+      rows: record.rows,
+      eventId: record.eventAnalysis.eventId,
+      series: [
+        ["active_power_mw", "Ölçülen aktif güç", "left", "MW"],
+        ["expected_active_power_mw", "Beklenen güç", "left", "MW"],
+        ["tolerance_lower_mw", "Alt tolerans", "left", "MW"],
+        ["tolerance_upper_mw", "Üst tolerans", "left", "MW"],
+        ["test_frequency_hz", "Simüle frekans", "right", "Hz"]
+      ]
+    }];
+  }
+  if (service === "PFK" && record.analysis?.metrics?.validationRows) {
+    const metrics = record.analysis.metrics;
+    const graph = (title, rows) => ({
+      title,
+      rows,
+      series: [
+        ["active_power_mw", "Ölçülen aktif güç", "left", "MW"],
+        ["expected_active_power_mw", "Beklenen güç", "left", "MW"],
+        ["tolerance_lower_mw", "Alt tolerans", "left", "MW"],
+        ["tolerance_upper_mw", "Üst tolerans", "left", "MW"],
+        ["grid_frequency_hz", "Şebeke frekansı", "right", "Hz"]
+      ]
+    });
+    return [
+      graph("24 saat doğrulama — güç, hedef ve tolerans bandı", metrics.validationRows),
+      graph("24 saat pozitif frekans kritik penceresi", metrics.positiveCriticalWindow),
+      graph("24 saat negatif frekans kritik penceresi", metrics.negativeCriticalWindow)
+    ];
+  }
   const columns = new Set(record.step.columns);
   const include = (definition) => columns.has(definition[0]);
   const sets = [];
@@ -100,4 +134,3 @@ export function seriesSetsFor(record, service) {
 export function normalizeSeries(series) {
   return series.map(([key, label, axis, unit]) => ({ key, label, axis, unit }));
 }
-

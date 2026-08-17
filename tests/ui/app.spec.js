@@ -11,12 +11,10 @@ test("loads PFK files, renders charts, criteria and reports without console erro
   await expect(page.locator("#workTitle")).toContainText("Primer Frekans Kontrolü");
 
   const fixtures = [
-    "RES_MAX_NEG200_ORNEK.csv", "RES_MAX_POS200_ORNEK.csv", "RES_MIN_NEG200_ORNEK.csv", "RES_MIN_POS200_ORNEK.csv",
-    "HASSASIYET_ORNEK.csv",
-    "VALIDATION_24SAAT_1S_ORNEK.csv"
+    "MAKSIMUM_REZERV_ORNEK.csv", "MINIMUM_REZERV_ORNEK.csv", "HASSASIYET_ORNEK.csv", "DOGRULAMA_24H_ORNEK.csv"
   ].map((name) => resolve("Ornek_Veriler", "PFK", "HES", name));
   await page.locator("#bulkFiles").setInputFiles(fixtures);
-  await expect(page.locator("#bulkSummary")).toContainText("6 dosya · 6 başarılı");
+  await expect(page.locator("#bulkSummary")).toContainText("4 dosya · 4 başarılı");
   await page.getByRole("button", { name: "3. Raporlar" }).click();
   const evidenceDownloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Ham CSV Kanıt Manifesti" }).click();
@@ -52,7 +50,7 @@ test("loads PFK files, renders charts, criteria and reports without console erro
   await expect(page.locator("#reportPaper")).toContainText("PRİMER FREKANS KONTROL PERFORMANS TEST RAPORU");
   await expect(page.locator("#reportPaper")).toContainText("B) TEKNİK VERİLER");
   await expect(page.locator("#reportPaper")).toContainText("HAM CSV SHA-256 KANIT MANİFESTİ");
-  await expect(page.locator("#reportPaper")).toContainText("İNCELEME GEREKLİ");
+  await expect(page.locator("#reportPaper")).toContainText("TASLAK / EKSİK BİLGİ");
   await expect(page.locator("#reportPaper")).not.toContainText("ORİJİNAL FORMAT / KAYNAK BELGE REFERANSI");
   await page.locator("#reportType").selectOption({ label: "Test Tutanağı" });
   await expect(page.locator("#reportPaper")).toContainText("PRİMER FREKANS KONTROL PERFORMANS TESTLERİ TUTANAĞI");
@@ -93,7 +91,7 @@ test("downloads Turkish UTF-8 BOM CSV and keeps PFK campaign controls scoped", a
   await expect(page.getByRole("button", { name: "Santral", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "4. Kriterler" }).click();
   await expect(page.getByRole("heading", { name: "PFK Çok Ünite Adım Kontrolü" })).toBeVisible();
-  await expect(page.locator("#criteriaContent details.criteria-step")).toHaveCount(14);
+  await expect(page.locator("#criteriaContent details.criteria-step")).toHaveCount(10);
 });
 
 test("treats CSV metadata as text and keeps mobile navigation usable", async ({ page }) => {

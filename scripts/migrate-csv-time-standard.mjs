@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, relative, resolve, sep } from "node:path";
-import { CONFIGS } from "../src/app/config-v062.js";
+import { CONFIGS } from "../src/app/config-runtime.js";
 import { formatTurkishTimestamp, makeCsvTemplate, parseLocaleNumber } from "../src/csv/parser.js";
 
 const root = resolve(import.meta.dirname, "..");
@@ -39,7 +39,8 @@ function timestampFor(seconds, metadata, ordinal = 0) {
 }
 
 function normalizeComments(comments, changes = {}) {
-  const map = { ...metadataFromComments(comments), ...changes, YHDA_VERSION: version };
+  const map = { ...metadataFromComments(comments), ...changes, YDA_VERSION: version, YHDA_VERSION: version };
+  if (/^YHDA\b/i.test(String(map.REPORT_PREPARED_BY ?? ""))) map.REPORT_PREPARED_BY = String(map.REPORT_PREPARED_BY).replace(/^YHDA\b/i, "YDA");
   return Object.entries(map).map(([key, value]) => `# ${key}=${value ?? ""}`);
 }
 
@@ -72,13 +73,13 @@ function combineSensitivity(paths, destination, config, template) {
   const firstMetadata = metadataFromComments(first.comments);
   const targets = source.map(({ parsed }) => metadataFromComments(parsed.comments).STEP_ID).join(",");
   if (template) {
-    const metadata = { ...firstMetadata, STEP_ID: "HASSASIYET", STEP_NAME: "Hassasiyet Testi — Birleşik Frekans Adımları", SENSITIVITY_SEGMENTS: targets, YHDA_VERSION: version };
+    const metadata = { ...firstMetadata, STEP_ID: "HASSASIYET", STEP_NAME: "Hassasiyet Testi — Birleşik Frekans Adımları", SENSITIVITY_SEGMENTS: targets, YDA_VERSION: version, YHDA_VERSION: version };
     writeFileSync(destination, makeCsvTemplate(metadata, config.steps.find((step) => step.id === "HASSASIYET").columns), "utf8");
   } else {
     const headers = first.headers;
     const timeIndex = headers.findIndex((header) => header.trim().toLowerCase() === "time_s");
     const remaining = headers.filter((_, index) => index !== timeIndex);
-    const metadata = { ...firstMetadata, STEP_ID: "HASSASIYET", STEP_NAME: "Hassasiyet Testi — Birleşik Frekans Adımları", SENSITIVITY_SEGMENTS: targets, DATA_CLASS: "ÖRNEK / SENTETİK", YHDA_VERSION: version };
+    const metadata = { ...firstMetadata, STEP_ID: "HASSASIYET", STEP_NAME: "Hassasiyet Testi — Birleşik Frekans Adımları", SENSITIVITY_SEGMENTS: targets, DATA_CLASS: "ÖRNEK / SENTETİK", YDA_VERSION: version, YHDA_VERSION: version };
     const rows = source.flatMap(({ parsed }) => {
       const result = parsed.rows.map((values, index) => {
         const rest = values.filter((_, valueIndex) => valueIndex !== timeIndex);
@@ -98,11 +99,14 @@ function combineSensitivity(paths, destination, config, template) {
 }
 
 function commonMetadata(service, plant, step, unitId, unitName, start) {
+  const isSecondUnit = unitId === "U2";
+  const pnom = isSecondUnit ? "90" : "77.924";
+  const reserve = isSecondUnit ? "9" : "7.7924";
   return {
-    YHDA_VERSION: version, TEST_SERVICE: service, PLANT_TYPE: plant, STEP_ID: step.id, SAMPLE_PERIOD_MS: step.sampleMs,
+    YDA_VERSION: version, YHDA_VERSION: version, TEST_SERVICE: service, PLANT_TYPE: plant, STEP_ID: step.id, SAMPLE_PERIOD_MS: step.sampleMs,
     TESIS_ADI: "Köprü HES — Örnek/Sentetik Kampanya", TEST_DATE: "2026-03-12", CITY: "Örnek İl", DATA_CLASS: "ÖRNEK / SENTETİK",
-    PNOM_MW: "77.924", UNIT_PNOM_MW: "77.924", RPMAX_MW: "7.7924", RPMIN_MW: "7.7924", PSET_MAX_MW: "54.86", PSET_MIN_MW: "36.14",
-    DROOP_PERCENT: "4", DEADBAND_MHZ: "0", MEASUREMENT_DEVICE_TYPE: "Veri toplama cihazı", MEASUREMENT_BRAND: "Sentetik örnek", MEASUREMENT_MODEL: "YHDA-SIM", MEASUREMENT_SERIAL_NO: `SIM-${unitId}-2026`, MEASUREMENT_SOFTWARE: "YHDA sentetik veri üreticisi", CALIBRATION_NO: "ÖRNEK", CALIBRATION_DATE: "2026-03-01",
+    PNOM_MW: pnom, UNIT_PNOM_MW: pnom, RPMAX_MW: reserve, RPMIN_MW: reserve, PSET_MAX_MW: isSecondUnit ? "63" : "54.86", PSET_MIN_MW: isSecondUnit ? "45" : "36.14",
+    DROOP_PERCENT: "4", DEADBAND_MHZ: "0", MEASUREMENT_DEVICE_TYPE: "Veri toplama cihazı", MEASUREMENT_BRAND: "Sentetik örnek", MEASUREMENT_MODEL: "YDA-SIM", MEASUREMENT_SERIAL_NO: `SIM-${unitId}-2026`, MEASUREMENT_SOFTWARE: "YDA sentetik veri üreticisi", CALIBRATION_NO: "ÖRNEK", CALIBRATION_DATE: "2026-03-01",
     CAMPAIGN_ID: "PFK-KOPRU-HES-20260312", FACILITY_ID: "KOPRU-HES", TEST_SCOPE: "MULTI_UNIT", ENTITY_TYPE: "UNIT", ENTITY_ID: unitId, UNIT_ID: unitId, UNIT_NAME: unitName, UNIT_COUNT: "2", EVENT_ID: "KOPRU-PFK-01", RUN_ID: "RUN-001", TEST_START: start
   };
 }
@@ -110,8 +114,48 @@ function commonMetadata(service, plant, step, unitId, unitName, start) {
 function line(metadata, headers, values) { return `\uFEFF${Object.entries(metadata).map(([key, value]) => `# ${key}=${value}`).join("\r\n")}\r\n${headers.join(";")}\r\n${values.map((row) => row.join(";")).join("\r\n")}\r\n`; }
 function number(value, digits = 4) { return Number(value).toFixed(digits).replace(".", ","); }
 
+function normalizedHeader(value) { return String(value).trim().toLocaleLowerCase("tr-TR").replaceAll("ı", "i"); }
+
+function combineClassicReserveExample(plant, destinationId, sourceIds) {
+  const paths = sourceIds.map((id) => resolve(exampleRoot, "PFK", plant, `${id}_ORNEK.csv`));
+  if (!paths.every(existsSync)) return;
+  const sources = paths.map((path) => parts(readFileSync(path, "utf8")));
+  const first = sources[0];
+  const metadata = {
+    ...metadataFromComments(first.comments),
+    STEP_ID: destinationId,
+    STEP_NAME: destinationId === "MAKSIMUM_REZERV" ? "Maksimum rezerv — birleşik −200/+200 mHz olayları" : "Minimum rezerv — birleşik −200/+200 mHz olayları",
+    EVENT_SEQUENCE: "NEG200,POS200",
+    YDA_VERSION: version,
+    YHDA_VERSION: version
+  };
+  const keep = first.headers.map((header, index) => ({ header, index })).filter(({ header }) => !["zaman", "sira_no", "time_s"].includes(normalizedHeader(header)));
+  const headers = ["ZAMAN", "SIRA_NO", ...keep.map(({ header }) => header)];
+  const rows = sources.flatMap((source) => source.rows.map((sourceRow) => keep.map(({ index }) => sourceRow[index] ?? ""))).map((values, index) => [timestampFor(index * 0.1, metadata, index), String(index + 1), ...values]);
+  const destination = resolve(exampleRoot, "PFK", plant, `${destinationId}_ORNEK.csv`);
+  writeFileSync(destination, line(metadata, headers, rows), "utf8");
+  paths.forEach((path) => rmSync(path, { force: true }));
+}
+
+function renameClassicValidationExample(plant) {
+  const source = resolve(exampleRoot, "PFK", plant, "VALIDATION_24SAAT_1S_ORNEK.csv");
+  if (!existsSync(source)) return;
+  const parsed = parts(readFileSync(source, "utf8"));
+  const metadata = { ...metadataFromComments(parsed.comments), STEP_ID: "DOGRULAMA_24H", STEP_NAME: "24 saat doğrulama — gerçek şebeke frekansı", YDA_VERSION: version, YHDA_VERSION: version };
+  writeFileSync(resolve(exampleRoot, "PFK", plant, "DOGRULAMA_24H_ORNEK.csv"), line(metadata, parsed.headers, parsed.rows), "utf8");
+  rmSync(source, { force: true });
+}
+
+function removeClassicReserveTemplates() {
+  const legacy = ["RES_MAX_NEG200", "RES_MAX_POS200", "RES_MIN_NEG200", "RES_MIN_POS200", "VALIDATION"];
+  for (const plant of ["HES", "DGKCS", "TES"]) {
+    for (const id of legacy) rmSync(resolve(templateRoot, "PFK", plant, `${id}.csv`), { force: true });
+  }
+}
+
 function makeMultiUnitExample() {
   const base = resolve(exampleRoot, "PFK", "HES_MULTI_UNIT");
+  rmSync(base, { recursive: true, force: true });
   mkdirSync(base, { recursive: true });
   const config = CONFIGS["PFK:HES"];
   const files = [];
@@ -124,15 +168,20 @@ function makeMultiUnitExample() {
       const rows = [];
       const headers = step.columns.map((column) => ({ zaman: "ZAMAN", sira_no: "SIRA_NO" }[column] ?? column.toUpperCase()));
       const baseTime = new Date(2026, 2, 12, 9 + unitIndex, 0, 0, 0).valueOf();
-      if (step.kind === "reserve") {
-        const isUp = step.id.includes("NEG200");
-        const pset = step.id.includes("MAX") ? 54.86 : 36.14;
-        for (let index = 0; index <= 9400; index += 1) {
+      if (step.kind === "reserve_sequence") {
+        const pset = Number(step.id === "MAKSIMUM_REZERV" ? metadata.PSET_MAX_MW : metadata.PSET_MIN_MW);
+        const reserve = Number(metadata.RPMAX_MW);
+        for (let index = 0; index <= 18_900; index += 1) {
           const seconds = index / 10;
-          const response = seconds < 20 ? 0 : 7.7924 * Math.min(1, (seconds - 20) / (unitIndex ? 21.5 : 19.5));
-          const active = pset + (isUp ? response : -response) + Math.sin(index / (13 + unitIndex)) * 0.025;
-          const frequency = seconds < 20 ? 50 : isUp ? 49.8 : 50.2;
-          const values = { zaman: formatTurkishTimestamp(baseTime + index * 100), sira_no: index + 1, grid_frequency_hz: number(50 + Math.sin(index / 17) * 0.008), test_frequency_hz: number(frequency), active_power_mw: number(active), active_power_reference_mw: number(pset + (isUp ? response : -response)), guide_vane_pct: number(42 + active * 0.28, 3) };
+          const secondEvent = seconds >= 950;
+          const inEvent = (seconds >= 20 && seconds < 920) || (seconds >= 950 && seconds < 1850);
+          const direction = secondEvent ? -1 : 1;
+          const eventStart = secondEvent ? 950 : 20;
+          const response = inEvent ? reserve * Math.min(1, Math.max(0, (seconds - eventStart - (unitIndex ? 2.0 : 1.2)) / (unitIndex ? 22 : 20))) : 0;
+          const active = pset + direction * response + Math.sin(index / (13 + unitIndex)) * 0.025;
+          const frequency = inEvent ? (direction > 0 ? 49.8 : 50.2) : 50;
+          const reference = pset + direction * response;
+          const values = { zaman: formatTurkishTimestamp(baseTime + index * 100), sira_no: index + 1, grid_frequency_hz: number(50 + Math.sin(index / 17) * 0.008), test_frequency_hz: number(frequency), active_power_mw: number(active), active_power_reference_mw: number(reference), guide_vane_pct: number(42 + active * 0.28, 3) };
           rows.push(step.columns.map((column) => values[column] ?? ""));
         }
       } else if (step.kind === "sensitivity") {
@@ -179,6 +228,7 @@ function refreshManifest() {
   writeFileSync(resolve(exampleRoot, "ORNEK_VERI_MANIFESTOSU.csv"), `\uFEFFHizmet;Tesis_Tipi;STEP_ID;Dosya;Satir_Sayisi;Ornekleme_ms;Yaklasik_Sure_s;Test_Adi\r\n${rows.map((row) => row.join(";")).join("\r\n")}\r\n`, "utf8");
 }
 
+removeClassicReserveTemplates();
 for (const [key, config] of Object.entries(CONFIGS)) {
   const [service, plant] = key.split(":");
   for (const step of config.steps) {
@@ -187,7 +237,7 @@ for (const [key, config] of Object.entries(CONFIGS)) {
     const metadata = {
       ...metadataFromComments(source.comments), TEST_SERVICE: service, PLANT_TYPE: plant, STEP_ID: step.id,
       ...(service === "PFK" && step.id === "HASSASIYET" ? { STEP_NAME: "Hassasiyet Testi — Birleşik Frekans Adımları" } : {}),
-      SAMPLE_PERIOD_MS: step.sampleMs, YHDA_VERSION: version
+      SAMPLE_PERIOD_MS: step.sampleMs, YDA_VERSION: version, YHDA_VERSION: version
     };
     writeFileSync(path, makeCsvTemplate(metadata, step.columns), "utf8");
   }
@@ -210,6 +260,11 @@ for (const [key, config] of Object.entries(CONFIGS)) {
 for (const path of csvFiles(exampleRoot)) {
   if (["ORNEK_VERI_MANIFESTOSU.csv", "campaign.csv", "manifest.csv"].includes(basename(path))) continue;
   writeFileSync(path, migrateText(readFileSync(path, "utf8")), "utf8");
+}
+for (const plant of ["HES", "DGKCS", "TES"]) {
+  combineClassicReserveExample(plant, "MAKSIMUM_REZERV", ["RES_MAX_NEG200", "RES_MAX_POS200"]);
+  combineClassicReserveExample(plant, "MINIMUM_REZERV", ["RES_MIN_NEG200", "RES_MIN_POS200"]);
+  renameClassicValidationExample(plant);
 }
 makeMultiUnitExample();
 refreshManifest();

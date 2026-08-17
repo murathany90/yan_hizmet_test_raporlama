@@ -18,8 +18,9 @@ let changed = 0;
 for (const file of files) {
   const input = readFileSync(file, "utf8");
   const output = input
+    .replace(/^(﻿?)# YDA_VERSION=.*$/m, `$1# YDA_VERSION=${version}`)
     .replace(/^(﻿?)# YHDA_VERSION=.*$/m, `$1# YHDA_VERSION=${version}`)
-    .replace(/^# REPORT_PREPARED_BY=YHDA v.*$/m, `# REPORT_PREPARED_BY=YHDA v${version}`);
+    .replace(/^# REPORT_PREPARED_BY=(?:YHDA|YDA) v.*$/m, `# REPORT_PREPARED_BY=YDA v${version}`);
   if (output !== input) {
     writeFileSync(file, output, "utf8");
     changed += 1;
