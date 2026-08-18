@@ -37,7 +37,7 @@ export async function buildDocxDocument(model) {
   const docx = await import("docx");
   const { AlignmentType, BorderStyle, Document, Footer, Header, HeadingLevel, ImageRun, PageBreak, PageNumber, Paragraph, ShadingType, Table, TableCell, TableRow, TextRun, VerticalAlign, WidthType } = docx;
   const borders = { top: { style: BorderStyle.SINGLE, size: 3, color: LINE }, bottom: { style: BorderStyle.SINGLE, size: 3, color: LINE }, left: { style: BorderStyle.SINGLE, size: 3, color: LINE }, right: { style: BorderStyle.SINGLE, size: 3, color: LINE }, insideHorizontal: { style: BorderStyle.SINGLE, size: 2, color: LINE }, insideVertical: { style: BorderStyle.SINGLE, size: 2, color: LINE } };
-  const paragraph = (text, options = {}) => new Paragraph({ alignment: options.alignment, spacing: { before: options.before ?? 0, after: options.after ?? 100, line: options.line ?? 276 }, children: [new TextRun({ text: String(text ?? ""), bold: options.bold, size: options.size ?? 18, color: options.color ?? "172630", font: "Arial" })] });
+  const paragraph = (text, options = {}) => new Paragraph({ alignment: options.alignment, keepNext: options.keepNext, spacing: { before: options.before ?? 0, after: options.after ?? 100, line: options.line ?? 276 }, children: [new TextRun({ text: String(text ?? ""), bold: options.bold, size: options.size ?? 18, color: options.color ?? "172630", font: "Arial" })] });
   const heading = (text, level = HeadingLevel.HEADING_1) => new Paragraph({ heading: level, spacing: { before: 180, after: 90 }, shading: { type: ShadingType.CLEAR, fill: LIGHT, color: "auto" }, border: { left: { style: BorderStyle.SINGLE, size: 16, color: BLUE, space: 5 } }, children: [new TextRun({ text, bold: true, size: level === HeadingLevel.HEADING_1 ? 21 : 18, color: DARK, font: "Arial" })] });
   const cell = (text, width, options = {}) => new TableCell({ width: { size: width, type: WidthType.DXA }, verticalAlign: VerticalAlign.CENTER, shading: options.header ? { type: ShadingType.CLEAR, fill: LIGHT, color: "auto" } : undefined, margins: { top: 70, bottom: 70, left: 80, right: 80 }, children: [paragraph(text, { bold: options.header, size: options.size ?? 14, after: 0, line: 210, alignment: options.alignment })] });
   const makeTable = (headers, rows, widths, size = 14) => new Table({ width: { size: TABLE_WIDTH, type: WidthType.DXA }, columnWidths: widths, borders, rows: [new TableRow({ tableHeader: true, cantSplit: true, children: headers.map((item, index) => cell(item, widths[index], { header: true, size })) }), ...(rows.length ? rows : [["Yüklenmiş kayıt yok"]]).map((row) => new TableRow({ cantSplit: true, children: widths.map((width, index) => cell(row[index] ?? "", width, { size })) }))] });
@@ -59,7 +59,19 @@ export async function buildDocxDocument(model) {
     makeTable(["Sinyal adı", "Bağlantı noktası", "Ölçme aralığı", "Tip", "m", "b", "Birim"], model.technicalData.channels.map((item) => [item.signal, item.connectionPoint, item.measurementRange, item.signalType, item.scaleM, item.scaleB, item.unit]), [1550, 1800, 1250, 800, 420, 420, TABLE_WIDTH - 6240], 11)
   ];
   const evidence = () => [paragraph("SHA-256 özeti elektronik imza değildir; ham CSV arşiv zinciri için izlenebilirlik sağlar.", { size: 14 }), paragraph(model.documentText.attachmentsDescription, { size: 14 }), makeTable(["Dosya", "SHA-256", "Ünite", "STEP_ID", "Satır", "Başlangıç", "Bitiş", "ms"], model.evidence.map((item) => [item.filename, item.sha256, item.unitId, item.stepId, String(item.rowCount), item.start, item.end, Number.isFinite(item.sampleMs) ? item.sampleMs.toFixed(3) : "—"]), [950, 1750, 450, 800, 400, 1200, 1200, TABLE_WIDTH - 6750], 9)];
-  const charts = (records) => records.flatMap((record) => record.charts.flatMap((chart) => [paragraph(`${record.name} — ${chart.title}`, { bold: true, size: 15, before: 80, after: 45 }), new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 110 }, children: [new ImageRun({ data: dataUrlToUint8Array(chart.dataUrl), transformation: { width: 510, height: 184 }, type: "png" })] })]));
+  const charts = (records) => records.flatMap((record) => {
+    let previousGroup = "";
+    return record.charts.flatMap((chart) => {
+      const group = chart.figureGroup && chart.figureGroup !== previousGroup ? [paragraph(chart.groupTitle || chart.title, { bold: true, size: 16, before: 90, after: 35, keepNext: true })] : [];
+      previousGroup = chart.figureGroup || "";
+      return [
+        ...group,
+        paragraph(`${record.name} — ${chart.title}`, { bold: true, size: 15, before: 80, after: 35, keepNext: true }),
+        ...(chart.annotation ? [paragraph(chart.annotation, { size: 12, color: "526A7A", after: 35, keepNext: true })] : []),
+        new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 110 }, keepNext: true, children: [new ImageRun({ data: dataUrlToUint8Array(chart.dataUrl), transformation: { width: 510, height: 184 }, type: "png" })] })
+      ];
+    });
+  });
   const grouped = (section) => section.groups.flatMap((group) => {
     const items = group.items ?? [group];
     return [heading(group.heading, HeadingLevel.HEADING_2), ...items.flatMap((item) => { const records = selected(item); return [...(group.items ? [paragraph(item.heading, { bold: true, size: 16, after: 45 })] : []), summaryTable(records), ...(records.length && records.every((record) => record.eventId && record.metrics?.trp) ? records.flatMap((record) => [paragraph(`${record.name} — resmî kontrol listesi`, { bold: true, size: 14 }), reserveChecklist(record)]) : []), ...charts(records)]; })];

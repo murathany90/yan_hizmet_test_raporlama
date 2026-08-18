@@ -27,7 +27,14 @@ function summaryTable(records) {
   if (records.every((record) => record.eventId && record.metrics?.trp)) return reserveKpiTable(records);
   return `<div class="table-wrap"><table><thead><tr><th>Test adımı</th><th>CSV</th><th>Durum</th><th>Hesap / not</th></tr></thead><tbody>${records.map((record) => `<tr><td>${esc(record.name)}</td><td>${esc(record.filename)}</td><td>${statusBadge(record.status)}</td><td>${esc(record.detail)}</td></tr>`).join("")}</tbody></table></div>`;
 }
-function recordCharts(records) { return records.flatMap((record) => record.charts.map((chart) => `<figure><figcaption>${esc(record.name)} — ${esc(chart.title)}</figcaption><img class="report-chart" src="${chart.dataUrl}" alt="${esc(record.name)} ${esc(chart.title)}"></figure>`)).join(""); }
+function recordCharts(records) {
+  return records.flatMap((record) => record.charts.map((chart, index) => {
+    const groupHeading = chart.figureGroup && (index === 0 || record.charts[index - 1]?.figureGroup !== chart.figureGroup)
+      ? `<h5 class="report-figure-group">${esc(chart.groupTitle || chart.title)}</h5>` : "";
+    const annotation = chart.annotation ? `<p class="report-chart-note">${esc(chart.annotation)}</p>` : "";
+    return `${groupHeading}<figure><figcaption>${esc(record.name)} — ${esc(chart.title)}</figcaption>${annotation}<img class="report-chart" src="${chart.dataUrl}" alt="${esc(record.name)} ${esc(chart.title)}"></figure>`;
+  })).join("");
+}
 function technicalTables(model) {
   const equipment = model.technicalData.equipment.map((item) => `<tr><td>${esc(item.deviceType)}</td><td>${esc(item.brand)}</td><td>${esc(item.model)}</td><td>${esc(item.serialNo)}</td><td>${esc(item.software)}</td><td>${esc(item.accuracyClass)}</td><td>${esc(item.calibrationNo)}</td><td>${esc(item.calibrationDate)}</td></tr>`).join("");
   const channels = model.technicalData.channels.map((item) => `<tr><td>${esc(item.signal)}</td><td>${esc(item.connectionPoint)}</td><td>${esc(item.measurementRange)}</td><td>${esc(item.signalType)}</td><td>${esc(item.scaleM)}</td><td>${esc(item.scaleB)}</td><td>${esc(item.unit)}</td></tr>`).join("");

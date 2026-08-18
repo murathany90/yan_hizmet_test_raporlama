@@ -20,6 +20,51 @@ const officialPowerSeries = [
   ["tolerance_upper_mw", "Üst tolerans", "left", "MW", officialColors.limit, "dashed"]
 ];
 
+const officialScatterPowerSeries = [
+  ["active_power_mw", "Gerçekleşen çıkış gücü", "left", "MW", officialColors.power, "solid", "points"],
+  ["expected_active_power_mw", "Beklenen çıkış gücü", "left", "MW", officialColors.expected, "solid", "line"],
+  ["tolerance_lower_mw", "Beklenen çıkış gücü alt sınırı", "left", "MW", officialColors.limit, "dashed", "line"],
+  ["tolerance_upper_mw", "Beklenen çıkış gücü üst sınırı", "left", "MW", officialColors.limit, "dashed", "line"]
+];
+
+function finite(value, digits = 3) {
+  return Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : "—";
+}
+
+function validationAnnotation(metrics, rows) {
+  const first = rows.find((row) => Number.isFinite(row.active_power_reference_mw) || Number.isFinite(row.expected_active_power_mw)) ?? {};
+  const tolerance = Number(first.tolerance_upper_mw) - Number(first.expected_active_power_mw);
+  return `Pset=${finite(first.active_power_reference_mw)} MW | ±1% Pnom=${finite(tolerance)} MW | Başarı: %${finite(metrics.compliancePercent, 3)} | Uygun: ${metrics.compliantSamples ?? "—"}/${metrics.evaluationSamples ?? "—"}`;
+}
+
+function sensitivityMarkers(results) {
+  return results.flatMap((result) => [
+    Number.isFinite(result.startTimeSeconds) ? { label: `${result.targetFrequencyHz.toFixed(3)} Hz başlangıç`, value: result.startTimeSeconds } : null,
+    Number.isFinite(result.endTimeSeconds) ? { label: `${result.targetFrequencyHz.toFixed(3)} Hz bitiş`, value: result.endTimeSeconds } : null
+  ]).filter(Boolean);
+}
+
+export function pfkEventFigureRecord(record, event) {
+  const label = event.eventId === "NEG200" ? "Δf = −200 mHz" : "Δf = +200 mHz";
+  return {
+    ...record,
+    name: `${record.name} — ${label}`,
+    rows: event.chartRows ?? record.rows,
+    eventAnalysis: event,
+    analysis: { ...record.analysis, status: event.status, detail: event.detail, metrics: event }
+  };
+}
+
+function reserveEventAnnotation(event) {
+  const trp = event.trp ?? {};
+  return `Δtd=${finite(event.delaySeconds, 2)} s | t50=${finite(event.t50Seconds, 2)} s | Etkinleşme=${finite(event.officialActivationTimeSeconds, 2)} s | TRP A/B/C=${finite(trp.TRP_A?.percentage, 1)}/${finite(trp.TRP_B?.percentage, 1)}/${finite(trp.TRP_C?.percentage, 1)} %`;
+}
+
+export function pfkEventFigureRecords(record, service) {
+  const events = service === "PFK" && record.step?.kind === "reserve_sequence" ? record.analysis?.metrics?.events ?? [] : [];
+  return events.length ? [record, ...events.map((event) => pfkEventFigureRecord(record, event))] : [record];
+}
+
 function officialReserveOverview(record) {
   const plant = plantForPfkRecord(record);
   const adapter = getPfkPlantAdapter(plant);
@@ -68,24 +113,31 @@ export function seriesSetsFor(record, service) {
       graph("24 saat pozitif frekans kritik penceresi — aktif güç", metrics.positiveCriticalWindow, power),
       graph("24 saat negatif frekans kritik penceresi — frekans", metrics.negativeCriticalWindow, [["grid_frequency_hz", "Şebeke frekansı", "left", "Hz", officialColors.grid]]),
       graph("24 saat negatif frekans kritik penceresi — aktif güç", metrics.negativeCriticalWindow, power),
-      { title: "24 saat Frekans–Güç saçılımı ve PFK zarfı", rows: scatterRows, profile: OFFICIAL_TEIAS_PFK, xMode: "VALUE", xKey: "grid_frequency_hz", chartType: "scatter", series: power }
+      {
+        title: "24 saat Frekans–Güç saçılımı ve PFK zarfı",
+        annotation: validationAnnotation(metrics, scatterRows),
+        rows: scatterRows,
+        profile: OFFICIAL_TEIAS_PFK,
+        xMode: "VALUE",
+        xKey: "grid_frequency_hz",
+        chartType: "scatter",
+        series: officialScatterPowerSeries
+      }
     ];
   }
   if (service === "PFK" && record.step.kind === "sensitivity" && record.analysis?.metrics?.sensitivityResults?.length) {
     const plant = plantForPfkRecord(record);
-    const adapter = getPfkPlantAdapter(plant);
-    const processSeries = pfkProcessSignalDefinitions(plant).map((signal, index) => [signal.key, signal.label, index ? "left" : "right", signal.unit, index ? "#7550a0" : officialColors.process]);
-    return record.analysis.metrics.sensitivityResults.map((result) => ({
-      title: `Hassasiyet — ${result.targetFrequencyHz.toFixed(3)} Hz`,
-      rows: result.chartRows,
-      profile: OFFICIAL_TEIAS_PFK,
-      xMode: "RELATIVE_SECONDS",
-      series: [
-        ["test_frequency_hz", "Simüle frekans", "left", "Hz", officialColors.test],
-        ["active_power_mw", "Aktif güç", "right", "MW", officialColors.power],
-        ...processSeries
-      ].filter(([key]) => result.chartRows.some((row) => Number.isFinite(row[key])))
-    }));
+    const processSeries = pfkProcessSignalDefinitions(plant).map((signal, index) => [signal.key, signal.label, index ? "right" : "left", signal.unit, index ? "#7550a0" : officialColors.process]);
+    const results = record.analysis.metrics.sensitivityResults;
+    const available = (series) => series.filter(([key]) => record.rows.some((row) => Number.isFinite(row[key])));
+    const groupTitle = "Hassasiyet Testi — Birleşik Frekans Adımları";
+    const annotation = `Tespit edilen adımlar: ${results.map((result) => result.targetFrequencyHz.toFixed(3)).join(" / ")} Hz`;
+    const shared = { figureGroup: "PFK_SENSITIVITY_COMBINED", groupTitle, annotation, rows: record.rows, profile: OFFICIAL_TEIAS_PFK, xMode: "RELATIVE_SECONDS", markers: sensitivityMarkers(results) };
+    return [
+      { ...shared, title: `${groupTitle} — frekans`, series: available([["grid_frequency_hz", "Şebeke frekansı", "left", "Hz", officialColors.grid], ["test_frequency_hz", "Simüle frekans", "left", "Hz", officialColors.test]]) },
+      { ...shared, title: `${groupTitle} — aktif güç`, series: available([["active_power_mw", "Aktif güç", "left", "MW", officialColors.power]]) },
+      { ...shared, title: `${groupTitle} — proses sinyali`, series: available(processSeries) }
+    ].filter((set) => set.series.length);
   }
   if (service === "PFK" && record.step.kind === "reserve_sequence") return officialReserveOverview(record);
   const columns = new Set(record.step.columns);
@@ -181,5 +233,5 @@ export function seriesSetsFor(record, service) {
 }
 
 export function normalizeSeries(series) {
-  return series.map(([key, label, axis, unit, color, lineStyle]) => ({ key, label, axis, unit, color, lineStyle }));
+  return series.map(([key, label, axis, unit, color, lineStyle, renderType]) => ({ key, label, axis, unit, color, lineStyle, renderType }));
 }

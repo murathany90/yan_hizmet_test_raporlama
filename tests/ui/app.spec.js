@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { unzipSync } from "fflate";
 
 test("loads PFK files, renders charts, criteria and reports without console errors", async ({ page }) => {
   const errors = [];
@@ -52,6 +53,14 @@ test("loads PFK files, renders charts, criteria and reports without console erro
   await expect(page.locator("#reportPaper")).not.toContainText("HAM CSV SHA-256 KANIT MANİFESTİ");
   await expect(page.locator("#reportPaper")).toContainText("TASLAK / EKSİK BİLGİ");
   await expect(page.locator("#reportPaper")).not.toContainText("ORİJİNAL FORMAT / KAYNAK BELGE REFERANSI");
+  const scatterImage = page.locator('#reportPaper img.report-chart[alt*="Frekans–Güç saçılımı"]');
+  await expect(scatterImage).toHaveCount(1);
+  await expect.poll(() => scatterImage.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
+  const pdfDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "PDF Oluştur" }).click();
+  const pdfDownload = await pdfDownloadPromise;
+  const pdfBytes = await readFile(await pdfDownload.path());
+  expect(pdfBytes.subarray(0, 5).toString("utf8")).toBe("%PDF-");
   await page.locator("#reportType").selectOption({ label: "Test Tutanağı" });
   await expect(page.locator("#reportPaper")).toContainText("PRİMER FREKANS KONTROL PERFORMANS TESTLERİ TUTANAĞI");
   await expect(page.locator("#reportPaper")).toContainText("NÜSHA TESLİMİ");
@@ -63,8 +72,28 @@ test("loads PFK files, renders charts, criteria and reports without console erro
     expect(wordDownload.suggestedFilename()).toMatch(/\.docx$/i);
     const wordBytes = await readFile(await wordDownload.path());
     expect(String.fromCharCode(...wordBytes.slice(0, 2))).toBe("PK");
+    if (reportType === "Performans Test Raporu") expect(Object.keys(unzipSync(wordBytes)).some((path) => path.startsWith("word/media/"))).toBe(true);
   }
   expect(errors).toEqual([]);
+});
+
+test("renders PFK reserve events, combined sensitivity and production scatter figures", async ({ page }) => {
+  await page.goto("/");
+  const fixtures = ["MAKSIMUM_REZERV_ORNEK.csv", "MINIMUM_REZERV_ORNEK.csv", "HASSASIYET_ORNEK.csv", "DOGRULAMA_24H_ORNEK.csv"]
+    .map((name) => resolve("Ornek_Veriler", "PFK", "HES", name));
+  await page.locator("#bulkFiles").setInputFiles(fixtures);
+  await page.getByRole("button", { name: "2. Grafikler" }).click();
+  await expect(page.locator("details.chart-details")).toHaveCount(8);
+  await expect(page.locator("#chartArea")).toContainText("Δf = −200 mHz yanıt penceresi");
+  await expect(page.locator("#chartArea")).toContainText("Δf = +200 mHz sürdürme penceresi");
+  const graphValueFor = async (label) => page.locator("#graphStep option").evaluateAll((options, part) => options.find((option) => option.textContent?.includes(part))?.getAttribute("value") ?? "", label);
+  await page.locator("#graphStep").selectOption(await graphValueFor("Hassasiyet testi"));
+  await expect(page.locator("h3.chart-figure-group")).toHaveText("Hassasiyet Testi — Birleşik Frekans Adımları");
+  await expect(page.locator("details.chart-details")).toHaveCount(3);
+  await page.locator("#graphStep").selectOption(await graphValueFor("24 saat doğrulama"));
+  await expect(page.locator("summary").filter({ hasText: "24 saat Frekans–Güç saçılımı ve PFK zarfı" })).toHaveCount(1);
+  await expect(page.getByLabel("Minimum frekans Hz")).toBeVisible();
+  await expect(page.locator(".chart-annotation").last()).toContainText("Başarı:");
 });
 
 test("downloads Turkish UTF-8 BOM CSV and keeps PFK campaign controls scoped", async ({ page }) => {

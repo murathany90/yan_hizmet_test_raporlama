@@ -5,8 +5,8 @@ import { parseCsv } from "../src/csv/parser.js";
 import { resolveCsvRoute } from "../src/csv/metadata.js";
 import { validateParsedCsv } from "../src/csv/validator.js";
 import { evaluateRecord } from "../src/analysis/evaluate.js";
-import { chartToSvg } from "../src/charts/engine.js";
-import { seriesSetsFor } from "../src/charts/series.js";
+import { chartToSvg, chartViewForRows } from "../src/charts/engine.js";
+import { normalizeSeries, seriesSetsFor } from "../src/charts/series.js";
 import { CONFIGS } from "../src/app/config-runtime.js";
 import { buildReportModel } from "../src/report/model.js";
 import { createPdfBuffer } from "../src/report/pdf.js";
@@ -53,10 +53,16 @@ async function checkClassicPlant(plant) {
   assert.equal(validation.analysis.status, "GEÇTİ", `${plant} 24h status`);
   const scatter = seriesSetsFor(validation, "PFK").find((set) => set.title.includes("Frekans–Güç saçılımı"));
   assert.ok(scatter, `${plant} scatter model`);
+  const options = { xMode: scatter.xMode, xKey: scatter.xKey, chartType: scatter.chartType };
+  const view = chartViewForRows(scatter.rows, options);
   const frequencies = scatter.rows.map((row) => row.grid_frequency_hz).filter(Number.isFinite);
-  const svg = chartToSvg(scatter.rows, scatter.series.map(([key, label, axis, unit, color, lineStyle]) => ({ key, label, axis, unit, color, lineStyle })), { minimum: Math.min(...frequencies), maximum: Math.max(...frequencies), fullMin: Math.min(...frequencies), fullMax: Math.max(...frequencies) }, scatter.title, 900, 430, { xMode: scatter.xMode, xKey: scatter.xKey, chartType: scatter.chartType });
+  assert.equal(view.minimum, Math.min(...frequencies), `${plant} scatter production minimum`);
+  assert.equal(view.maximum, Math.max(...frequencies), `${plant} scatter production maximum`);
+  const svg = chartToSvg(scatter.rows, normalizeSeries(scatter.series), view, scatter.title, 900, 430, options);
   assert.doesNotMatch(svg, /Gösterilecek seri seçilmedi|No series|empty chart|0 rendered series/i, `${plant} scatter must render`);
   assert.match(svg, /<circle /, `${plant} scatter must contain points`);
+  assert.match(svg, /<polyline /, `${plant} scatter must contain expected characteristic lines`);
+  assert.match(svg, /stroke-dasharray=/, `${plant} scatter must contain tolerance lines`);
   const reportRecords = records.map(compact);
   const metadata = { ...records[0].sourceMetadata, TEST_START_DATE: "01.08.2026", TEST_END_DATE: "02.08.2026", DOCUMENT_DATE: "03.08.2026", VALIDATION_START_DATETIME: "02.08.2026 00:00:00", VALIDATION_END_DATETIME: "03.08.2026 00:00:00", PARTICIPANTS: "Test Mühendisi | YDA | Mühendis | Katılımcı" };
   for (const reportType of ["Performans Test Raporu", "Test Tutanağı"]) {

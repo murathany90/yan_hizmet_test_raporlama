@@ -8,6 +8,7 @@ YDA (Yan Hizmetler Testleri Doğrulama Aracı); PFK, RGDH, HFK, SFHM ve SFK test
 - Resmî PFK event checklist'i dokuz kriter, ölçülen değer, sınır, sonuç ve kanıt referansıyla PDF/DOCX/HTML'de ortak `ReportModel` üzerinden üretilir.
 - G) Sonuç, olay bazlı resmî performans özeti ve ünite bazlı kriter matrisi olarak iki tabloya ayrılmıştır; teknik/belge durumları ayrı küçük kutuda gösterilir.
 - 24 saat Frekans–Güç saçılımı frekansı x, aktif gücü y ekseninde; beklenen PFK karakteristiği ve ±%1 Pnom zarfıyla üretilir. Public HES/DGKÇS/TES regression'ı boş figure'ı reddeder.
+- Scatter üretim yolu sırasız frekansta gerçek min/max domain kullanır; ölçülen seri nokta bulutu, hedef seri düz çizgi, toleranslar kesikli çizgidir. HASSASİYET kaydı tek birleşik figure group, rezerv CSV'leri ise genel kayıtla birlikte iki olayın yanıt/sürdürme panellerini üretir.
 - Tutanak tarih alanları test, belge ve 24 saat doğrulama dönemi için ayrıdır. Kayıt metadata, kampanya, kullanıcı ayarı ve yalnız tanımlayıcı adapter varsayımları öncelik sırasıyla birleşir.
 - `npm run test:plant-matrix` public sentetik tesis matrisini; `npm run test:private` ise varsa yerel gerçek-fixture regression'ını çalıştırır. Fixture yoksa açıkça `SKIPPED_PRIVATE_FIXTURE` yazılır.
 

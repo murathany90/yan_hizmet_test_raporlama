@@ -40,7 +40,21 @@ function technicalContent(model) {
 
 function recordContent(records, charts = true) {
   const content = [summaryTable(records), ...(records.length && records.every((record) => record.eventId && record.metrics?.trp) ? records.flatMap((record) => [{ text: `${record.name} — resmî kontrol listesi`, bold: true, fontSize: 7.4, margin: [0, 4, 0, 1] }, reserveChecklist(record)]) : [])];
-  if (charts) records.forEach((record) => record.charts.forEach((chart) => content.push({ text: `${record.name} — ${chart.title}`, bold: true, fontSize: 7.5, margin: [0, 5, 0, 2] }, { image: chart.dataUrl, fit: [510, 185], alignment: "center", margin: [0, 0, 0, 7] })));
+  if (charts) records.forEach((record) => {
+    let previousGroup = "";
+    record.charts.forEach((chart) => {
+      if (chart.figureGroup && chart.figureGroup !== previousGroup) content.push({ text: chart.groupTitle || chart.title, bold: true, fontSize: 8, margin: [0, 7, 0, 2] });
+      previousGroup = chart.figureGroup || "";
+      content.push({
+        unbreakable: true,
+        stack: [
+          { text: `${record.name} — ${chart.title}`, bold: true, fontSize: 7.5, margin: [0, 5, 0, 2] },
+          ...(chart.annotation ? [{ text: chart.annotation, fontSize: 6.6, color: "526a7a", margin: [0, 0, 0, 2] }] : []),
+          { image: chart.dataUrl, fit: [510, 185], alignment: "center", margin: [0, 0, 0, 7] }
+        ]
+      });
+    });
+  });
   return content;
 }
 

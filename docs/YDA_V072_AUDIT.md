@@ -30,3 +30,14 @@ Başlangıç sürümü: `0.7.1`
 - HES için v0.7.1'in yönsel Pset/TRP ve 24 saat hesapları korunacaktır.
 - RGDH, HFK, SFHM ve SFK evaluator/routing kapsamı genişletilmeyecektir.
 - Gerçek saha verisi, imzalı belge ve `docs/test_dosyaları/**` sürüm kontrolüne eklenmeyecektir.
+
+## PFK grafik / belge parite takip denetimi
+
+Takip denetiminde VALUE eksenli scatter'ın ilk/son satır alanına göre ölçeklendiği ve sıralı olmayan frekansta binary-search dilimlemesi kullandığı doğrulandı. Ayrıca hassasiyet figure'ı dört ayrı grafiğe bölünüyor, rezerv olay panelleri Grafikler sekmesinde oluşmuyordu.
+
+- `chartExtent()` tüm geçerli frekans değerlerinin gerçek minimum/maksimumunu kullanır; sırasız VALUE verisi filtrelenerek işlenir.
+- Scatter serileri ölçülen güç için nokta, beklenen güç için düz çizgi, toleranslar için kesikli çizgi olarak ayrılmıştır.
+- HASSASIYET evaluator sonuçları korunarak tek `PFK_SENSITIVITY_COMBINED` figure group içinde frekans, aktif güç ve proses panelleri üretilir.
+- MAKSIMUM/MİNİMUM_REZERV Grafikler sekmesi genel kayıtla birlikte −200 ve +200 mHz yanıt/sürdürme panellerini ortak helper üzerinden üretir.
+- G) tablosu sürdürmeyi dakika; hassasiyet ve ölü bandı ayrı mHz alanlarıyla gösterir.
+- Public tesis matrisi, unit test ve Playwright kontrolü üretim grafik yolunu kapsar.

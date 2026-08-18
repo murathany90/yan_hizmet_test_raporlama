@@ -95,7 +95,9 @@ for (const unit of ["U1", "U2"]) {
   const sensitivity = loadRecord(unit, "HASSASIYET.csv");
   assert.equal(sensitivity.analysis.status, "GEÇTİ", `${unit}/HASSASIYET status`);
   assert.deepEqual(sensitivity.analysis.metrics.sensitivityResults.map((item) => item.targetFrequencyHz), [49.995, 50.005, 49.990, 50.010], `${unit} sensitivity plateaus`);
-  assert.equal(seriesSetsFor(sensitivity, "PFK").length, 4, `${unit} sensitivity panel count`);
+  const sensitivityFigures = seriesSetsFor(sensitivity, "PFK");
+  assert.equal(sensitivityFigures.length, 3, `${unit} combined sensitivity panel count`);
+  assert.ok(sensitivityFigures.every((figure) => figure.figureGroup === "PFK_SENSITIVITY_COMBINED"), `${unit} sensitivity figure group`);
   const validation = loadRecord(unit, "DOGRULAMA_24H.csv");
   const expectedSamples = unit === "U1" ? 824379 : 809161;
   const expectedRatio = unit === "U1" ? 95.41424 : 93.65290;

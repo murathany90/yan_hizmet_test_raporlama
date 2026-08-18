@@ -417,6 +417,7 @@ function evaluatePfkSensitivity(record, metadata, plant) {
     const primaryEvidenceThreshold = Math.max(0.01, Math.min(settings.guideResponseMinimumPct, 3 * (Number.isFinite(primaryControlNoise) ? primaryControlNoise : 0)));
     const primaryControlEvidence = Number.isFinite(meanPrimaryControl) && Number.isFinite(baselinePrimaryControl) && Math.abs(primaryControlDelta) >= primaryEvidenceThreshold;
     const startTime = number(rows[segment.startIndex].time_s);
+    const endTime = number(rows[segment.endIndex].time_s);
     return {
       targetFrequencyHz: segment.target,
       frequencyHz: segment.target,
@@ -429,16 +430,35 @@ function evaluatePfkSensitivity(record, metadata, plant) {
       primaryEvidenceThreshold,
       measuredDeadbandMhz: Math.abs(segment.target - PFK_CRITERIA.reserve.nominalFrequencyHz) * 1000,
       sampleCount: segment.rows.length,
+      startTimeSeconds: startTime,
+      endTimeSeconds: endTime,
       chartRows: rows.slice(Math.max(0, segment.startIndex - Math.ceil(15 / sampleSeconds)), Math.min(rows.length, segment.endIndex + Math.ceil(15 / sampleSeconds) + 1)).map((row) => ({ ...row, time_s: number(row.time_s) - startTime }))
     };
   });
   const passed = results.length === settings.requiredSteps
     && settings.targetsHz.every((target, index) => results[index]?.targetFrequencyHz === target)
     && results.every((item) => item.primaryControlEvidence && item.measuredDeadbandMhz <= settings.deadbandLimitMhz);
+  const responsiveSensitivityMhz = results
+    .filter((item) => item.primaryControlEvidence)
+    .map((item) => Math.abs(item.measuredFrequencyHz - PFK_CRITERIA.reserve.nominalFrequencyHz) * 1000)
+    .filter(Number.isFinite);
+  const configuredDeadbandMhz = number(metadata.DEADBAND_MHZ, Number.NaN);
   return {
     status: passed ? "GEÇTİ" : "İNCELEME GEREKLİ",
     detail: results.length ? `Tek CSV içinde ${results.length}/4 hassasiyet basamağı tespit edildi: ${results.map((item) => `${item.targetFrequencyHz.toFixed(3)} Hz / ${adapter.primaryControlLabel} Δ=${formatMetric(item.primaryControlDelta, 3)} ${adapter.primaryControlUnit} / ölü bant=${formatMetric(item.measuredDeadbandMhz, 1)} mHz`).join("; ")}` : "Hassasiyet frekans basamakları tek CSV içinde tespit edilemedi.",
-    metrics: { profile: adapter.profile, primaryControlSignal: primarySignal, primaryControlLabel: adapter.primaryControlLabel, sensitivityResults: results, segmentCount: results.length, sampleMs: sampleSeconds * 1000, deadbandLimitMhz: settings.deadbandLimitMhz }
+    metrics: {
+      profile: adapter.profile,
+      primaryControlSignal: primarySignal,
+      primaryControlLabel: adapter.primaryControlLabel,
+      sensitivityResults: results,
+      sensitivitySummary: {
+        measuredSensitivityMhz: responsiveSensitivityMhz.length ? Math.min(...responsiveSensitivityMhz) : Number.NaN,
+        configuredDeadbandMhz
+      },
+      segmentCount: results.length,
+      sampleMs: sampleSeconds * 1000,
+      deadbandLimitMhz: settings.deadbandLimitMhz
+    }
   };
 }
 

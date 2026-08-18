@@ -11,6 +11,10 @@ Bu proje [Semantic Versioning](https://semver.org/) yaklaşımını izler.
 - PFK G) bölümündeki teknik/belge özet tablosu, resmî olay performans özeti ve ünite sonuç matrisiyle değiştirildi.
 - Tutanak tarihleri test, belge ve doğrulama dönemleri için ayrı metadata alanlarından çözülür; CSV son satırı test bitiş tarihini zorla değiştirmez.
 - Yapılandırma kaynaklarındaki bozuk Türkçe karakterler normalize edildi.
+- VALUE eksenli 24 saat scatter gerçek frekans minimum/maksimumuyla ölçeklenir; sırasız frekans verisi binary-search ile dilimlenmez. Ölçülen güç nokta, hedef çizgi ve toleranslar kesikli çizgi olarak render edilir.
+- HASSASİYET kaydı tek `PFK_SENSITIVITY_COMBINED` figure group'unda frekans, aktif güç ve tesis-proses panelleriyle sunulur; dört evaluator sonucu korunur.
+- Grafikler sekmesi, MAKSIMUM/MİNİMUM_REZERV için genel kayda ek olarak −200/+200 mHz yanıt ve sürdürme panellerini; PDF/DOCX ise başlık, KPI ve görseli ayrılmayan figure bloklarıyla gösterir.
+- G) özet tablosunda sürdürme dakika; hassasiyet ve ölü bant birbirinden bağımsız mHz alanları olarak gösterilir.
 
 ### Eklendi
 

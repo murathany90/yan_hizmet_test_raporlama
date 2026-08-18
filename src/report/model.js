@@ -3,6 +3,7 @@ import { documentTextTemplates, interpolateDocumentText, isMinutesReport } from 
 import { inferUnit } from "../utils/text.js";
 import { isDraftMode } from "../criteria/procedures.js";
 import { pfkAdapterMetadataDefaults, pfkProcessSignalDefinitions } from "../criteria/pfk-plant-adapters.js";
+import { pfkEventFigureRecord } from "../charts/series.js";
 import { reportTitle, sectionsForReport } from "./templates/index.js";
 
 const SIGNAL_LABELS = {
@@ -218,13 +219,7 @@ function participantRows(metadata) {
 
 function eventReportRecord(record, event, chartProvider) {
   const eventLabel = event.eventId === "NEG200" ? "Δf = −200 mHz" : "Δf = +200 mHz";
-  const synthetic = {
-    ...record,
-    name: `${record.name} — ${eventLabel}`,
-    rows: event.chartRows ?? record.rows,
-    eventAnalysis: event,
-    analysis: { status: event.status, detail: event.detail, metrics: event }
-  };
+  const synthetic = pfkEventFigureRecord(record, event);
   const { chartRows, ...metrics } = event;
   return {
     eventId: event.eventId,

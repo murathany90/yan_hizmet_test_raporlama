@@ -60,17 +60,26 @@ function dateInputValue(value) {
   return new Date(date.valueOf() - offset).toISOString().slice(0, 23);
 }
 
-function fullTimeExtent(rows, options = {}) {
-  if (!rows.length) return [0, 1];
-  const minimumRow = rows.find((row) => Number.isFinite(xValue(row, options)));
-  const minimum = minimumRow ? xValue(minimumRow, options) : 0;
-  const maximumRow = [...rows].reverse().find((row) => Number.isFinite(xValue(row, options)));
-  const maximum = maximumRow ? xValue(maximumRow, options) : minimum + 1;
+export function chartExtent(rows, options = {}) {
+  let minimum = Number.POSITIVE_INFINITY;
+  let maximum = Number.NEGATIVE_INFINITY;
+  for (const row of rows) {
+    const value = xValue(row, options);
+    if (!Number.isFinite(value)) continue;
+    minimum = Math.min(minimum, value);
+    maximum = Math.max(maximum, value);
+  }
+  if (!Number.isFinite(minimum) || !Number.isFinite(maximum)) return [0, 1];
   return minimum === maximum ? [minimum, minimum + 1] : [minimum, maximum];
 }
 
+export function chartViewForRows(rows, options = {}) {
+  const [minimum, maximum] = chartExtent(rows, options);
+  return { minimum, maximum, fullMin: minimum, fullMax: maximum };
+}
+
 function viewFor(state, viewKey, rows, options = {}) {
-  const [fullMin, fullMax] = fullTimeExtent(rows, options);
+  const { minimum: fullMin, maximum: fullMax } = chartViewForRows(rows, options);
   const existing = state.chartViews.get(viewKey);
   const view = existing ?? { minimum: fullMin, maximum: fullMax, fullMin, fullMax };
   view.fullMin = fullMin;
@@ -85,9 +94,36 @@ function viewFor(state, viewKey, rows, options = {}) {
   return view;
 }
 
+function isSortedByX(rows, options = {}) {
+  let previous = Number.NEGATIVE_INFINITY;
+  for (const row of rows) {
+    const value = xValue(row, options);
+    if (!Number.isFinite(value)) continue;
+    if (value < previous) return false;
+    previous = value;
+  }
+  return true;
+}
+
 function dataForView(rows, series, view, maxPoints, options = {}) {
-  const visible = visibleSlice(rows, view.minimum, view.maximum, xKey(rows, options));
+  const visible = isSortedByX(rows, options)
+    ? visibleSlice(rows, view.minimum, view.maximum, xKey(rows, options))
+    : rows.filter((row) => {
+      const value = xValue(row, options);
+      return Number.isFinite(value) && value >= view.minimum && value <= view.maximum;
+    });
   return minMaxDownsample(visible, series.map((item) => item.key), maxPoints);
+}
+
+function renderType(item, options = {}) {
+  return item.renderType ?? (options.chartType === "scatter" ? "points" : "line");
+}
+
+function rowsForSeries(data, item, options = {}) {
+  const rows = data.filter((row) => Number.isFinite(xValue(row, options)) && Number.isFinite(row[item.key]));
+  return options.xMode === "VALUE" && renderType(item, options) !== "points"
+    ? [...rows].sort((left, right) => xValue(left, options) - xValue(right, options))
+    : rows;
 }
 
 export function drawChart(canvas, rows, series, view, options = {}) {
@@ -157,17 +193,18 @@ export function drawChart(canvas, rows, series, view, options = {}) {
   series.forEach((item, index) => {
     context.save();
     context.strokeStyle = item.color ?? COLORS[index % COLORS.length];
+    context.fillStyle = item.color ?? COLORS[index % COLORS.length];
     context.lineWidth = 1.65 * pixelRatio;
     context.setLineDash(item.lineStyle === "dashed" || /Referans|Simüle/.test(item.label) ? [6 * pixelRatio, 4 * pixelRatio] : []);
     context.beginPath();
     let started = false;
-    for (const row of data) {
+    const type = renderType(item, options);
+    for (const row of rowsForSeries(data, item, options)) {
       const rowX = xValue(row, options);
       const yValue = row[item.key];
-      if (!Number.isFinite(rowX) || !Number.isFinite(yValue)) { started = false; continue; }
       const px = x(rowX);
       const py = (item.axis === "right" ? yRight : yLeft)(yValue);
-      if (options.chartType === "scatter") {
+      if (type === "points") {
         context.moveTo(px + 1.5 * pixelRatio, py);
         context.arc(px, py, 1.5 * pixelRatio, 0, Math.PI * 2);
         started = true;
@@ -176,7 +213,8 @@ export function drawChart(canvas, rows, series, view, options = {}) {
         started = true;
       } else context.lineTo(px, py);
     }
-    context.stroke();
+    if (type === "points") context.fill();
+    else context.stroke();
     context.restore();
   });
 
@@ -244,10 +282,11 @@ export function chartToSvg(rows, series, view, title, width = 1200, height = 600
   }).join("");
   const realTime = usesRealTime(rows, options);
   const paths = series.map((item, index) => {
-    const points = data.filter((row) => Number.isFinite(xValue(row, options)) && Number.isFinite(row[item.key])).map((row) => `${x(xValue(row, options)).toFixed(2)},${(item.axis === "right" ? yRight : yLeft)(row[item.key]).toFixed(2)}`).join(" ");
+    const seriesRows = rowsForSeries(data, item, options);
+    const points = seriesRows.map((row) => `${x(xValue(row, options)).toFixed(2)},${(item.axis === "right" ? yRight : yLeft)(row[item.key]).toFixed(2)}`).join(" ");
     const color = item.color ?? COLORS[index % COLORS.length];
-    return options.chartType === "scatter"
-      ? data.filter((row) => Number.isFinite(xValue(row, options)) && Number.isFinite(row[item.key])).map((row) => `<circle cx="${x(xValue(row, options)).toFixed(2)}" cy="${(item.axis === "right" ? yRight : yLeft)(row[item.key]).toFixed(2)}" r="1.5" fill="${color}"/>`).join("")
+    return renderType(item, options) === "points"
+      ? seriesRows.map((row) => `<circle cx="${x(xValue(row, options)).toFixed(2)}" cy="${(item.axis === "right" ? yRight : yLeft)(row[item.key]).toFixed(2)}" r="1.5" fill="${color}"/>`).join("")
       : `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="2"${item.lineStyle === "dashed" ? ' stroke-dasharray="7 5"' : ""}/>`;
   }).join("");
   const legend = series.map((item, index) => `<text x="${left + index * 190}" y="${height - 14}" fill="${item.color ?? COLORS[index % COLORS.length]}">${svgEscape(item.label)} [${svgEscape(item.unit)}]</text>`).join("");
@@ -304,13 +343,23 @@ export class ChartManager {
     return series.filter((item) => this.state.chartSeriesVisibility.get(`${viewKey}:${item.key}`) !== false);
   }
 
-  render(container, record, service, modeKey) {
-    this.resizeObserver.disconnect();
-    this.registry.clear();
-    container.replaceChildren();
+  render(container, record, service, modeKey, append = false) {
+    if (!append) {
+      this.resizeObserver.disconnect();
+      this.registry.clear();
+      container.replaceChildren();
+      this.lastFigureGroup = null;
+    }
     const sets = record.seriesSets ?? seriesSetsFor(record, service);
     sets.forEach((set, index) => {
-      const viewKey = `${modeKey}:${record.step.id}:${index}`;
+      if (set.figureGroup && this.lastFigureGroup !== set.figureGroup) {
+        const heading = document.createElement("h3");
+        heading.className = "chart-figure-group";
+        heading.textContent = set.groupTitle ?? set.title;
+        container.append(heading);
+      }
+      this.lastFigureGroup = set.figureGroup ?? null;
+      const viewKey = `${modeKey}:${record.step.id}:${record.eventAnalysis?.eventId ?? "record"}:${index}`;
       const rows = set.rows ?? record.rows;
       const series = normalizeSeries(set.series);
       const options = { xMode: set.xMode, xKey: set.xKey, chartType: set.chartType, markers: set.markers };
@@ -334,18 +383,20 @@ export class ChartManager {
       minimumInput.type = realTime ? "datetime-local" : "number";
       minimumInput.step = realTime ? "0.001" : "any";
       minimumInput.value = realTime ? dateInputValue(view.minimum) : String(view.minimum);
-      minimumInput.setAttribute("aria-label", realTime ? "Başlangıç gerçek zamanı" : "Başlangıç zamanı saniye");
+      const valueAxis = options.xMode === "VALUE";
+      minimumInput.setAttribute("aria-label", realTime ? "Başlangıç gerçek zamanı" : valueAxis ? "Minimum frekans Hz" : "Başlangıç zamanı saniye");
       const separator = document.createElement("span");
-      separator.textContent = realTime ? "—" : "s —";
+      separator.textContent = realTime || valueAxis ? "—" : "s —";
       const maximumInput = document.createElement("input");
       maximumInput.type = realTime ? "datetime-local" : "number";
       maximumInput.step = realTime ? "0.001" : "any";
       maximumInput.value = realTime ? dateInputValue(view.maximum) : String(view.maximum);
-      maximumInput.setAttribute("aria-label", realTime ? "Bitiş gerçek zamanı" : "Bitiş zamanı saniye");
+      maximumInput.setAttribute("aria-label", realTime ? "Bitiş gerçek zamanı" : valueAxis ? "Maksimum frekans Hz" : "Bitiş zamanı saniye");
       const unit = document.createElement("span");
-      unit.textContent = realTime ? "" : "s";
+      unit.textContent = realTime ? "" : valueAxis ? "Hz" : "s";
       range.append(minimumInput, separator, maximumInput, unit, button("Uygula", "apply-range", "Girilen zaman aralığını uygula"));
       toolbar.append(range);
+      if (set.annotation) toolbar.append(Object.assign(document.createElement("span"), { className: "chart-annotation", textContent: set.annotation }));
       const canvas = document.createElement("canvas");
       canvas.className = "chart-canvas";
       canvas.dataset.viewKey = viewKey;
@@ -507,11 +558,10 @@ export class ChartManager {
       const series = normalizeSeries(set.series);
       const rows = set.rows ?? record.rows;
       const options = { xMode: set.xMode, xKey: set.xKey, chartType: set.chartType, markers: set.markers };
-      const [fullMin, fullMax] = fullTimeExtent(rows, options);
-      const view = { minimum: fullMin, maximum: fullMax, fullMin, fullMax };
+      const view = chartViewForRows(rows, options);
       const canvas = document.createElement("canvas");
       drawChart(canvas, rows, series, view, { ...options, width: 1100, height: 400, pixelRatio: 1, maxPoints: 6_000 });
-      return { title: set.title, dataUrl: canvas.toDataURL("image/png") };
+      return { title: set.title, annotation: set.annotation ?? "", figureGroup: set.figureGroup ?? "", groupTitle: set.groupTitle ?? "", dataUrl: canvas.toDataURL("image/png") };
     });
   }
 }

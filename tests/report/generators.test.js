@@ -189,6 +189,9 @@ describe("report generators", () => {
     const preview = renderReportPreview(model);
     expect(preview).toContain("PFK-09");
     expect(preview).toContain("Primer Frekans Kontrol Performans Testleri Sonuç Tablosu");
+    expect(preview).toContain("Sürdürme (dk)");
+    expect(preview).toContain("Hassasiyet (mHz)");
+    expect(preview).toContain("Ölü bant (mHz)");
     const definition = JSON.stringify(makePdfDefinition(model));
     expect(definition).toContain("Hız eğimi — gerçekleşen");
   });

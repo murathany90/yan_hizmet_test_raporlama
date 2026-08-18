@@ -17,6 +17,7 @@ import {
   setPfkCampaign
 } from "./app/state.js";
 import { ChartManager } from "./charts/engine.js";
+import { pfkEventFigureRecords } from "./charts/series.js";
 import { controlsFor, isDraftMode, procedureFor } from "./criteria/procedures.js";
 import { evaluateRecord } from "./analysis/evaluate.js";
 import { hasUtf8Bom, makeCsvTemplate, parseCsv } from "./csv/parser.js";
@@ -552,7 +553,9 @@ function renderCharts() {
     return;
   }
   const chartRecord = campaignChartRecord(record);
-  chartManager.render(elements.chartArea, chartRecord, state.service, `${modeKey(state.service, state.plant)}:${state.pfkChartScopeByMode.get(modeKey(state.service, state.plant)) ?? "unit"}`);
+  const chartRecords = pfkEventFigureRecords(chartRecord, state.service);
+  const chartModeKey = `${modeKey(state.service, state.plant)}:${state.pfkChartScopeByMode.get(modeKey(state.service, state.plant)) ?? "unit"}`;
+  chartRecords.forEach((figureRecord, index) => chartManager.render(elements.chartArea, figureRecord, state.service, chartModeKey, index > 0));
   if (chartRecord.dataQualityWarning) elements.chartArea.prepend(element("div", { className: "warning-note", text: chartRecord.dataQualityWarning }));
 }
 

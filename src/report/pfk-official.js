@@ -46,15 +46,16 @@ export function officialPfkConclusionTables(model) {
     const metrics = event.metrics ?? {};
     const trp = metrics.trp ?? {};
     const unitSensitivity = sensitivity.find((record) => (record.metadata?.UNIT_ID || "Tesis kapsamı") === event.unitId);
-    const sensitivityResult = unitSensitivity?.metrics?.sensitivityResults?.[0];
+    const sensitivitySummary = unitSensitivity?.metrics?.sensitivitySummary;
     const metadata = event.metadata ?? model.metadata;
+    const deadbandMhz = metadata.DEADBAND_MHZ ?? model.metadata.DEADBAND_MHZ;
     return [
       `${event.unitId} — ${event.label || event.eventId}`,
       `${metric(metrics.pNomMw)} MW`, `${metric(metrics.pSetMw)} MW`, `${metric(metrics.deltaPowerMw)} MW`,
-      `${metric(metrics.officialActivationTimeSeconds)} s`, `${metric(metrics.sustainSeconds, 1)} s`,
+      `${metric(metrics.officialActivationTimeSeconds)} s`, `${metric(Number(metrics.sustainSeconds) / 60, 2)} dk`,
       `${metric(trp.TRP_A?.percentage)} %`, `${metric(trp.TRP_B?.percentage)} %`, `${metric(trp.TRP_C?.percentage)} %`,
-      sensitivityResult ? `${metric(sensitivityResult.measuredFrequencyHz, 3)} Hz` : "İnceleme gerekli",
-      sensitivityResult ? `${metric(sensitivityResult.measuredDeadbandMhz, 1)} mHz` : "İnceleme gerekli",
+      Number.isFinite(sensitivitySummary?.measuredSensitivityMhz) ? `${metric(sensitivitySummary.measuredSensitivityMhz, 1)} mHz` : "İnceleme gerekli",
+      Number.isFinite(Number(deadbandMhz)) ? `${metric(deadbandMhz, 1)} mHz` : "Bilgi girilmedi",
       `${display(metadata.DROOP_PERCENT || metadata.DROOP_RANGE_PERCENT)} %`,
       `${display(metadata.ACTUAL_DROOP_PERCENT || metadata.DROOP_ACTUAL_PERCENT)} %`,
       event.status
@@ -78,7 +79,7 @@ export function officialPfkConclusionTables(model) {
     ];
   });
   return Object.freeze({
-    summaryHeaders: ["Ünite / olay", "Pnom", "Pset", "ΔP", "Etkinleştirme", "Sürdürme", "TRP_A", "TRP_B", "TRP_C", "Hassasiyet", "Ölü bant", "Hız eğimi — ayarlanan", "Hız eğimi — gerçekleşen", "Sonuç"],
+    summaryHeaders: ["Ünite / olay", "Pnom", "Pset", "ΔP", "Etkinleştirme", "Sürdürme (dk)", "TRP_A", "TRP_B", "TRP_C", "Hassasiyet (mHz)", "Ölü bant (mHz)", "Hız eğimi — ayarlanan", "Hız eğimi — gerçekleşen", "Sonuç"],
     summaryRows,
     matrixHeaders: ["Ünite", "Rezerv miktarı", "Etkinleştirme ≤30 s", "Doğrusallık", "Sürdürme ≥15 dk", "TRP_A ≥90%", "TRP_B ≥90%", "TRP_C ≥90%", "Hassasiyet ≤±10 mHz", "24 saat doğrulama"],
     matrixRows,
