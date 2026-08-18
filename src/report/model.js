@@ -2,6 +2,7 @@ import { REPORT_VARIABLES } from "../app/config-runtime.js";
 import { documentTextTemplates, interpolateDocumentText, isMinutesReport } from "../app/settings.js";
 import { inferUnit } from "../utils/text.js";
 import { isDraftMode } from "../criteria/procedures.js";
+import { pfkAdapterMetadataDefaults, pfkProcessSignalDefinitions } from "../criteria/pfk-plant-adapters.js";
 import { reportTitle, sectionsForReport } from "./templates/index.js";
 
 const SIGNAL_LABELS = {
@@ -20,10 +21,12 @@ function variableRows(configKey, config, metadata) {
 
 function keyForChannel(key) { return key.toUpperCase().replace(/[^A-Z0-9]/g, "_"); }
 
-function channelRows(records, metadata) {
+function channelRows(records, metadata, plant) {
   const columns = [...new Set(records.flatMap((record) => record.step.columns))].filter((column) => !["zaman", "sira_no", "time_s"].includes(column));
-  if (!columns.length) return [{ signal: "Bilgi girilmedi", connectionPoint: "Bilgi girilmedi", measurementRange: "Bilgi girilmedi", signalType: "Bilgi girilmedi", scaleM: "Bilgi girilmedi", scaleB: "Bilgi girilmedi", unit: "Bilgi girilmedi" }];
-  return columns.map((channel) => {
+  const adapterColumns = plant ? pfkProcessSignalDefinitions(plant).map((signal) => signal.key) : [];
+  const visibleColumns = [...new Set([...columns, ...adapterColumns.filter((column) => columns.includes(column))])];
+  if (!visibleColumns.length) return [{ signal: "Bilgi girilmedi", connectionPoint: "Bilgi girilmedi", measurementRange: "Bilgi girilmedi", signalType: "Bilgi girilmedi", scaleM: "Bilgi girilmedi", scaleB: "Bilgi girilmedi", unit: "Bilgi girilmedi" }];
+  return visibleColumns.map((channel) => {
     const key = keyForChannel(channel);
     const signal = SIGNAL_LABELS[channel] ?? channel.replaceAll("_", " ");
     return {
@@ -38,7 +41,7 @@ function channelRows(records, metadata) {
   });
 }
 
-function technicalData(metadata, records) {
+function technicalData(metadata, records, plant) {
   const accuracy = String(metadata.MEASUREMENT_ACCURACY_PERCENT ?? "").trim();
   const equipment = [{
     deviceType: metadata.MEASUREMENT_DEVICE_TYPE || "Veri toplama cihazı",
@@ -70,7 +73,7 @@ function technicalData(metadata, records) {
   }
   return {
     equipment,
-    channels: channelRows(records, metadata)
+    channels: channelRows(records, metadata, plant)
   };
 }
 
@@ -90,7 +93,7 @@ function officialStatus(records, missingSteps, draft, completeness = []) {
   return records.every((record) => record.status === "GEÇTİ") ? "İMZA ÖNCESİ" : "İNCELEME GEREKLİ";
 }
 
-function completenessChecks(service, metadata, records, missingSteps) {
+function completenessChecks(service, metadata, records, missingSteps, plant) {
   if (service !== "PFK") return [];
   const required = [
     ["TESIS_ADI", "Tesis adı"], ["UNIT_ID", "Ünite kimliği"], ["PNOM_MW", "Pnom"], ["RPMAX_MW", "RPmax"],
@@ -100,7 +103,11 @@ function completenessChecks(service, metadata, records, missingSteps) {
   const missingEvents = records.flatMap((record) => record.stepId === "MAKSIMUM_REZERV" || record.stepId === "MINIMUM_REZERV"
     ? ["NEG200", "POS200"].filter((eventId) => !record.events?.some((event) => event.eventId === eventId)).map((eventId) => ({ kind: "event", key: `${record.stepId}/${eventId}`, label: `${record.name}: ${eventId} olayı` }))
     : []);
-  return [...missingMetadata, ...missingEvents, ...missingSteps.map((step) => ({ kind: "step", key: step.stepId, label: step.name }))];
+  const processSignals = pfkProcessSignalDefinitions(plant);
+  const missingProcessSignals = records.flatMap((record) => ["reserve_sequence", "sensitivity", "validation", "bess_sensitivity"].includes(record.kind)
+    ? processSignals.filter((signal) => !record.columns?.includes(signal.key)).map((signal) => ({ kind: "signal", key: `${record.stepId}/${signal.key}`, label: `${record.name}: ${signal.label} kanalı` }))
+    : []);
+  return [...missingMetadata, ...missingEvents, ...missingProcessSignals, ...missingSteps.map((step) => ({ kind: "step", key: step.stepId, label: step.name }))];
 }
 
 function evaluationStatus(records, missingSteps, draft) {
@@ -165,6 +172,41 @@ function applyDefaults(metadata, settings) {
   };
 }
 
+function campaignMetadata(campaign) {
+  if (!campaign) return {};
+  return {
+    ...(campaign.metadata ?? {}),
+    CAMPAIGN_ID: campaign.campaignId,
+    FACILITY_ID: campaign.facilityId,
+    TEST_SCOPE: campaign.testScope,
+    EVENT_ID: campaign.eventId,
+    RUN_ID: campaign.runId
+  };
+}
+
+function csvRange(records) {
+  const rows = records.flatMap((record) => record.rows ?? []);
+  const first = rows.at(0);
+  const last = rows.at(-1);
+  const display = (row) => row?.zaman ?? row?.timestamp ?? "";
+  return { start: display(first), end: display(last) };
+}
+
+function resolveDocumentDates(metadata, records) {
+  const range = csvRange(records);
+  const testStart = metadata.TEST_START_DATE || metadata.TEST_DATE || range.start || "";
+  const testEnd = metadata.TEST_END_DATE || metadata.TEST_DATE || range.end || testStart;
+  const documentDate = metadata.DOCUMENT_DATE || metadata.TEST_DATE || testStart;
+  return {
+    ...metadata,
+    TEST_START_DATE: testStart,
+    TEST_END_DATE: testEnd,
+    DOCUMENT_DATE: documentDate,
+    VALIDATION_START_DATETIME: metadata.VALIDATION_START_DATETIME || metadata.VALIDATION_START || range.start || "",
+    VALIDATION_END_DATETIME: metadata.VALIDATION_END_DATETIME || metadata.VALIDATION_END || range.end || ""
+  };
+}
+
 function participantRows(metadata) {
   const source = String(metadata.PARTICIPANTS || metadata.TEST_TEAM || "").trim();
   if (!source) return [{ name: "Ad Soyad", company: "Kurum", title: "Ünvan", role: "Rol", signature: "İmza" }];
@@ -206,13 +248,18 @@ export function buildReportModel({ service, plant, config, metadata, reportType,
   const singleUnitScope = !activeCampaign || activeUnitIds.size === 1;
   const sourceUnitName = singleUnitScope ? activeRecords.find((record) => record.sourceMetadata?.UNIT_NAME)?.sourceMetadata?.UNIT_NAME : "";
   const sourceMetadata = activeRecords.reduce((merged, record) => mergeMetadata(record.sourceMetadata, merged), {});
-  const effectiveMetadata = applyDefaults(mergeMetadata({ ...metadata, UNIT_NAME: metadata.UNIT_NAME || sourceUnitName }, sourceMetadata), documentSettings);
+  // Değer önceliği: kayıt metadata > kampanya metadata > kullanıcı/proje alanları > adapter varsayılanları.
+  const userMetadata = { ...metadata, UNIT_NAME: metadata.UNIT_NAME || sourceUnitName };
+  const adapterMetadata = pfkAdapterMetadataDefaults(plant);
+  const projectMetadata = mergeMetadata(userMetadata, adapterMetadata);
+  const campaignLevelMetadata = mergeMetadata(campaignMetadata(activeCampaign), projectMetadata);
+  const effectiveMetadata = resolveDocumentDates(applyDefaults(mergeMetadata(sourceMetadata, campaignLevelMetadata), documentSettings), activeRecords);
   const missingSteps = activeCampaign
     ? activeCampaign.units.filter((unit) => unit.included !== false).flatMap((unit) => config.steps.filter((step) => !activeRecords.some((record) => record.step.id === step.id && record.sourceMetadata?.UNIT_ID === unit.unitId)).map((step) => ({ stepId: `${unit.unitId}/${step.id}`, name: step.name })))
     : config.steps.filter((step) => !activeRecords.some((record) => record.step.id === step.id)).map((step) => ({ stepId: step.id, name: step.name }));
   const reportRecords = activeRecords.map((record) => {
     const { events: rawEvents = [], ...analysisMetrics } = record.analysis.metrics ?? {};
-    const recordMetadata = mergeMetadata(record.sourceMetadata, effectiveMetadata);
+    const recordMetadata = resolveDocumentDates(applyDefaults(mergeMetadata(record.sourceMetadata, effectiveMetadata), documentSettings), [record]);
     const reportRecord = {
       ...record,
       metadata: recordMetadata
@@ -222,7 +269,7 @@ export function buildReportModel({ service, plant, config, metadata, reportType,
     stepId: record.step.id,
     recordKey: record.sourceMetadata?.CAMPAIGN_ID ? [record.sourceMetadata.CAMPAIGN_ID, record.sourceMetadata.UNIT_ID, record.step.id, record.sourceMetadata.RUN_ID].join("\u001f") : "",
     name: record.sourceMetadata?.CAMPAIGN_ID && record.sourceMetadata?.UNIT_ID ? `${record.sourceMetadata.UNIT_ID} — ${record.step.name}` : record.step.name,
-    kind: record.step.kind, filename: record.name, rowCount: record.rows.length, status: record.analysis.status, detail: record.analysis.detail,
+    kind: record.step.kind, columns: record.step.columns, filename: record.name, rowCount: record.rows.length, status: record.analysis.status, detail: record.analysis.detail,
     metrics: { ...analysisMetrics, finalActivePowerMw: record.rows.at(-1)?.active_power_mw },
     metadata: recordMetadata,
     warnings: record.validation?.warnings ?? [], evidence: record.evidence ?? null,
@@ -231,7 +278,7 @@ export function buildReportModel({ service, plant, config, metadata, reportType,
     charts: chartProvider ? chartProvider(reportRecord) : []
     });
   });
-  const completeness = completenessChecks(service, effectiveMetadata, reportRecords, missingSteps);
+  const completeness = completenessChecks(service, effectiveMetadata, reportRecords, missingSteps, plant);
   const draft = isDraftMode(service, plant);
   const values = {
     TESIS_ADI: effectiveMetadata.TESIS_ADI, COMPANY: effectiveMetadata.COMPANY, UNIT_ID: effectiveMetadata.UNIT_ID,
@@ -243,7 +290,7 @@ export function buildReportModel({ service, plant, config, metadata, reportType,
   const text = Object.fromEntries(Object.entries(documentTextTemplates(documentSettings, service, reportType)).map(([key, template]) => [key, interpolateDocumentText(template, values)]));
   const roles = String(documentSettings.defaultSignatureRoles || "TEİAŞ Gözlemcisi; Tesis Yetkilisi; Testi Gerçekleştiren").split(";").map((role) => role.trim()).filter(Boolean);
   return Object.freeze({
-    schemaVersion: 6, appVersion: "0.7.1", createdAt: new Date().toISOString(), service, plant, configKey: `${service}:${plant}`,
+    schemaVersion: 7, appVersion: "0.7.2", createdAt: new Date().toISOString(), service, plant, configKey: `${service}:${plant}`,
     reportType, title: reportTitle(service, plant, reportType), draft, reportNote, metadata: effectiveMetadata,
     expectedStepCount: activeCampaign ? config.steps.length * activeCampaign.units.filter((unit) => unit.included !== false).length : expectedIds.length,
     loadedStepCount: reportRecords.length, missingSteps, completeness,
@@ -251,12 +298,12 @@ export function buildReportModel({ service, plant, config, metadata, reportType,
     evaluationStatus: evaluationStatus(reportRecords, missingSteps, draft),
     officialStatus: officialStatus(reportRecords, missingSteps, draft, completeness),
     documentStatus: officialStatus(reportRecords, missingSteps, draft, completeness),
-    records: reportRecords, variables: variableRows(`${service}:${plant}`, config, effectiveMetadata), technicalData: technicalData(effectiveMetadata, activeRecords),
+    records: reportRecords, variables: variableRows(`${service}:${plant}`, config, effectiveMetadata), technicalData: technicalData(effectiveMetadata, activeRecords, service === "PFK" ? plant : ""),
     participants: participantRows(effectiveMetadata),
     campaign: activeCampaign, campaignSummary: campaignSummary(activeRecords, activeCampaign, effectiveMetadata),
     evidence: reportRecords.map((record) => record.evidence).filter(Boolean), sections: sectionsForReport({ service, plant, reportType, records: reportRecords, campaign: activeCampaign, includeEvidenceAppendix: documentSettings.includeEvidenceAppendix === true }),
     settings: documentSettings, documentText: text, assets: { logoDataUrl: documentSettings.showLogo === false ? "" : logoDataUrl },
-    figureProfile: service === "PFK" ? (isMinutesReport(reportType) ? "OFFICIAL_TEIAS_PFK_MINUTES" : "OFFICIAL_TEIAS_PFK_REPORT") : "DEFAULT",
+    figureProfile: service === "PFK" ? (documentSettings.includeEvidenceAppendix === true && reportType.includes("Teknik Kanıt") ? "YDA_TECHNICAL_EVIDENCE" : (isMinutesReport(reportType) ? "OFFICIAL_TEIAS_PFK_MINUTES" : "OFFICIAL_TEIAS_PFK_REPORT")) : "DEFAULT",
     watermark: service === "PFK" ? (documentSettings.showPfkOfficialWatermark === true ? { text: "TEİAŞ", opacity: Math.max(0, Math.min(0.25, Number(documentSettings.watermarkOpacity) || 0.08)) } : null) : (documentSettings.showWatermark !== false ? { text: "TEİAŞ", opacity: Math.max(0, Math.min(0.25, Number(documentSettings.watermarkOpacity) || 0.08)) } : null),
     signatures: roles.map((role, index) => ({ role, name: index === roles.length - 1 ? effectiveMetadata.TEST_ENGINEER || "Ad Soyad / İmza" : "Ad Soyad / İmza" }))
   });

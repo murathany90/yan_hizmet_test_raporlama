@@ -21,8 +21,9 @@ const PFK_OFFICIAL_FIELDS = [
   ["TEST_START_DATE", "Test başlangıç tarihi", "date", ""],
   ["TEST_END_DATE", "Test bitiş tarihi", "date", ""],
   ["DOCUMENT_DATE", "Belge düzenleme tarihi", "date", ""],
-  ["VALIDATION_START", "24 saat doğrulama başlangıcı", "text", ""],
-  ["VALIDATION_END", "24 saat doğrulama bitişi", "text", ""],
+  ["VALIDATION_START_DATETIME", "24 saat doğrulama başlangıcı", "text", ""],
+  ["VALIDATION_END_DATETIME", "24 saat doğrulama bitişi", "text", ""],
+  ["ACTUAL_DROOP_PERCENT", "Gerçekleşen hız eğimi [%]", "number", ""],
   ["PARTICIPANTS", "Katılımcılar (Ad Soyad | Kurum | Ünvan | Rol; ile ayırın)", "text", ""],
   ["ALTITUDE_M", "Tesis kotu [m]", "number", ""],
   ["AMBIENT_TEMPERATURE_C", "Ortam sıcaklığı [°C]", "number", ""]

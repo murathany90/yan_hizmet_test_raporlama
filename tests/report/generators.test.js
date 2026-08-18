@@ -6,6 +6,7 @@ import { createDocxBlob, createDocxBuffer } from "../../src/report/docx.js";
 import { DEFAULT_DOCUMENT_SETTINGS } from "../../src/app/settings.js";
 import { renderReportPreview } from "../../src/report/preview.js";
 import { strFromU8, unzipSync } from "fflate";
+import { buildOfficialReserveChecklist } from "../../src/criteria/pfk.js";
 
 function fixtureModel(settings) {
   const config = CONFIGS["PFK:HES"];
@@ -170,4 +171,25 @@ describe("report generators", () => {
     expect(headerXml).toContain("TEIASWatermark");
     expect(headerXml).toContain("v:shape");
   }, 30_000);
+
+  it("keeps the nine-item official checklist, conclusion matrices, and explicit document dates in every report model", () => {
+    const config = CONFIGS["PFK:DGKCS"];
+    const step = config.steps.find((item) => item.id === "MAKSIMUM_REZERV");
+    const metadata = { TESIS_ADI: "Sentetik DGKÇS", UNIT_ID: "U1", PNOM_MW: "800", RPMAX_MW: "50", PFK_OPERATION_MODE: "Governor Control", TEST_START_DATE: "Kullanıcı başlangıcı", TEST_END_DATE: "Kullanıcı bitişi", DOCUMENT_DATE: "Kullanıcı belge tarihi" };
+    const eventMetrics = { pNomMw: 800, pSetMw: 500, reserveMw: 50, deltaPowerMw: 50, deltaTdSeconds: 1.5, delayLimitSeconds: 2, officialActivationTimeSeconds: 20, sustainSeconds: 900, directionalPowerAt30Mw: 550, directionalPowerAt90Mw: 550, directionalLimitAt30Mw: 540, directionalLimitAt90Mw: 540, trp: { TRP_A: { percentage: 100 }, TRP_B: { percentage: 100 }, TRP_C: { percentage: 100 } } };
+    const event = { eventId: "NEG200", status: "GEÇTİ", ...eventMetrics, officialChecklist: buildOfficialReserveChecklist({ eventId: "NEG200", metrics: eventMetrics, metadata, stepId: step.id }), chartRows: [] };
+    const model = buildReportModel({
+      service: "PFK", plant: "DGKCS", config, metadata, reportType: "Performans Test Raporu", reportNote: "", settings: DEFAULT_DOCUMENT_SETTINGS, chartProvider: () => [],
+      records: [{ name: "synthetic.csv", step, rows: [], sourceMetadata: { ...metadata, TEST_START_DATE: "Kayıt başlangıcı", TEST_END_DATE: "Kayıt bitişi", DOCUMENT_DATE: "Kayıt belge tarihi" }, analysis: { status: "GEÇTİ", detail: "ok", metrics: { events: [event] } }, validation: { warnings: [] } }]
+    });
+    expect(model.metadata.TEST_START_DATE).toBe("Kayıt başlangıcı");
+    expect(model.metadata.TEST_END_DATE).toBe("Kayıt bitişi");
+    expect(model.metadata.DOCUMENT_DATE).toBe("Kayıt belge tarihi");
+    expect(model.records[0].events[0].metrics.officialChecklist).toHaveLength(9);
+    const preview = renderReportPreview(model);
+    expect(preview).toContain("PFK-09");
+    expect(preview).toContain("Primer Frekans Kontrol Performans Testleri Sonuç Tablosu");
+    const definition = JSON.stringify(makePdfDefinition(model));
+    expect(definition).toContain("Hız eğimi — gerçekleşen");
+  });
 });

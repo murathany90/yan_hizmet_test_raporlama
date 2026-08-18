@@ -2,7 +2,7 @@ import { dataUrlToUint8Array } from "../utils/text.js";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { isMinutesReport } from "../app/settings.js";
 import { recordsForReportSection } from "./record-selection.js";
-import { pfkMinutesDetails as officialPfkMinutesDetails, pfkSimulationSvg } from "./pfk-official.js";
+import { officialPfkConclusionTables, pfkMinutesDetails as officialPfkMinutesDetails, pfkSimulationSvg } from "./pfk-official.js";
 
 const A4_WIDTH = 11906;
 const A4_HEIGHT = 16838;
@@ -50,7 +50,7 @@ export async function buildDocxDocument(model) {
   const summaryTable = (records) => records.length && records.every((record) => record.eventId && record.metrics?.trp)
     ? reserveSummaryTable(records)
     : makeTable(["Test adımı", "CSV", "Durum", "Hesap / not"], records.map((record) => [record.name, record.filename, record.status, record.detail]), [2400, 1800, 1100, TABLE_WIDTH - 5300], 13);
-  const reserveChecklist = (record) => { const metrics = record.metrics ?? {}; const trp = metrics.trp ?? {}; return makeTable(["Resmî kontrol", "Ölçülen", "Sonuç"], [["100 ms kayıt", `${metric(metrics.sampleMs, 0)} ms`, Number(metrics.sampleMs) <= 102 ? "OLUMLU" : "OLUMSUZ"], ["Δtd", `${metric(metrics.deltaTdSeconds)} s`, Number(metrics.deltaTdSeconds) <= 4 ? "OLUMLU" : "OLUMSUZ"], ["t50 / t100", `${metric(metrics.t50Seconds)} / ${metric(metrics.t100Seconds)} s`, Number(metrics.t50Seconds) <= 15 && Number(metrics.t100Seconds) <= 30 ? "OLUMLU" : "OLUMSUZ"], ["Etkinleştirme", `${metric(metrics.officialActivationTimeSeconds)} s`, Number(metrics.officialActivationTimeSeconds) <= 30 ? "OLUMLU" : "OLUMSUZ"], ["Sürdürme", `${metric(metrics.sustainSeconds, 1)} s`, Number(metrics.sustainSeconds) >= 900 ? "OLUMLU" : "OLUMSUZ"], ["TRP A/B/C", `${metric(trp.TRP_A?.percentage)} / ${metric(trp.TRP_B?.percentage)} / ${metric(trp.TRP_C?.percentage)} %`, Number(trp.TRP_A?.percentage) >= 90 && Number(trp.TRP_B?.percentage) >= 90 && Number(trp.TRP_C?.percentage) >= 90 ? "OLUMLU" : "OLUMSUZ"]], [2200, TABLE_WIDTH - 3500, 1300], 10); };
+  const reserveChecklist = (record) => makeTable(["Kriter", "Resmî kontrol", "Ölçülen", "Sınır", "Kanıt", "Sonuç"], (record.metrics?.officialChecklist ?? []).map((item) => [item.criterionId, item.officialText, item.measuredValue, item.limitText, item.evidenceRef, item.result]), [600, 2600, 1400, 1300, 1500, TABLE_WIDTH - 7400], 8);
   const technical = () => [
     paragraph(model.documentText.technicalData, { size: 15 }),
     paragraph("Ölçüm ekipmanı ve kalibrasyon", { bold: true, size: 16, after: 55 }),
@@ -82,7 +82,7 @@ export async function buildDocxDocument(model) {
   };
   const evaluation = () => [paragraph(model.documentText.testResult, { size: 16 }), paragraph(`Test sonuçları; hedef/ölçülen değerler, ortalama, kararlılık ve kabul kriterleri üzerinden değerlendirilmiştir. Otomatik değerlendirme: ${model.overallStatus}.`, { size: 15 }), summaryTable(model.records)];
   const conclusion = () => [paragraph(model.documentText.reportConclusion, { size: 16 }), paragraph(`Nihai sonuç: ${model.overallStatus}`, { bold: true, size: 17, color: model.overallStatus === "GEÇTİ" ? "19724F" : "9B1C1C" })];
-  const pfkConclusion = () => [paragraph("Primer Frekans Kontrol Performans Testleri Özet Tablosu", { bold: true, size: 16 }), reserveSummaryTable(certificateReserveRows()), paragraph("Primer Frekans Kontrol Performans Testleri Sonuç Tablosu", { bold: true, size: 16 }), makeTable(["Teknik değerlendirme", "Belge tamlığı", "Açıklama"], [[model.evaluationStatus, model.documentStatus, "Teknik kabul ve belge tamlığı ayrı izlenir."]], [2200, 2200, TABLE_WIDTH - 4400], 13), paragraph(model.documentText.reportConclusion, { size: 15 })];
+  const pfkConclusion = () => { const tables = officialPfkConclusionTables(model); return [paragraph("Primer Frekans Kontrol Performans Testleri Özet Tablosu", { bold: true, size: 16 }), makeTable(tables.summaryHeaders, tables.summaryRows, [1200, 400, 400, 400, 520, 500, 400, 400, 400, 560, 520, 650, 700, TABLE_WIDTH - 7550], 6), paragraph("Primer Frekans Kontrol Performans Testleri Sonuç Tablosu", { bold: true, size: 16 }), makeTable(tables.matrixHeaders, tables.matrixRows, [900, 700, 760, 620, 760, 620, 620, 620, 850, TABLE_WIDTH - 6450], 7), makeTable(["Durum", "Sonuç"], tables.statusRows, [2200, TABLE_WIDTH - 2200], 12), paragraph(model.documentText.reportConclusion, { size: 15 })]; };
   const sectionContent = (section) => {
     if (section.type === "participants") return participants();
     if (section.type === "technical") return technical();

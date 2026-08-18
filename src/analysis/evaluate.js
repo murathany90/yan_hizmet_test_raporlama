@@ -1,5 +1,6 @@
 import { parseLocaleNumber } from "../csv/parser.js";
-import { buildOfficialReserveEnvelope, PFK_CRITERIA } from "../criteria/pfk.js";
+import { buildOfficialReserveEnvelope, buildOfficialReserveChecklist, PFK_CRITERIA } from "../criteria/pfk.js";
+import { getPfkPlantAdapter, pfkProfileForPlant } from "../criteria/pfk-plant-adapters.js";
 
 const number = (value, fallback = Number.NaN) => parseLocaleNumber(value, fallback);
 const finite = (values) => values.filter(Number.isFinite);
@@ -194,6 +195,13 @@ function evaluateReserveEvent(rows, event, metadata, plant, stepId = "", criteri
     TRP_B: trpResult(eventRows, officialStartTime, 30, 90, "trpB", envelopeInput),
     TRP_C: trpResult(eventRows, officialStartTime, 90, 900, "trpC", envelopeInput)
   };
+  const atRelativeTime = (seconds) => relative.find((item) => item.time >= seconds);
+  const pointAt30 = atRelativeTime(30);
+  const pointAt90 = atRelativeTime(90);
+  const envelopeAt30 = buildOfficialReserveEnvelope({ ...envelopeInput, responseDelay: Number.isFinite(delay) ? delay : 0, t: 30 });
+  const envelopeAt90 = buildOfficialReserveEnvelope({ ...envelopeInput, responseDelay: Number.isFinite(delay) ? delay : 0, t: 90 });
+  const directionAt30Limit = direction > 0 ? envelopeAt30.trpA.lower : envelopeAt30.trpA.upper;
+  const directionAt90Limit = direction > 0 ? envelopeAt90.trpB.lower : envelopeAt90.trpB.upper;
   const stableSustainRows = rows.slice(stableStart, Math.min(event.endIndex, atOrAfter(rows, stableStart, settings.sustainSeconds)) + 1)
     .filter((row) => {
       const time = number(row.time_s) - stableStartTime;
@@ -232,6 +240,15 @@ function evaluateReserveEvent(rows, event, metadata, plant, stepId = "", criteri
       response_delay_time_s: Number.isFinite(delay) ? delay : Number.NaN
     };
   });
+  const metrics = {
+    delayLimitSeconds: delayLimit,
+    directionalPowerAt30Mw: number(pointAt30?.row?.active_power_mw),
+    directionalPowerAt90Mw: number(pointAt90?.row?.active_power_mw),
+    directionalLimitAt30Mw: directionAt30Limit,
+    directionalLimitAt90Mw: directionAt90Limit,
+    trp
+  };
+  const officialChecklist = buildOfficialReserveChecklist({ eventId: event.eventId, metrics: { ...metrics, deltaTdSeconds: delay, officialActivationTimeSeconds: officialActivation }, metadata, stepId });
   return {
     ...event,
     direction: direction > 0 ? "UNDER_FREQUENCY" : "OVER_FREQUENCY",
@@ -250,7 +267,8 @@ function evaluateReserveEvent(rows, event, metadata, plant, stepId = "", criteri
     sampleMs: sampleSeconds * 1000,
     sustainSeconds: event.durationSeconds,
     sustainedPowerMw: sustainedPower,
-    trp,
+    ...metrics,
+    officialChecklist,
     chartRows,
     detail: `Δtd=${formatMetric(delay)} s; t50=${formatMetric(t50)} s; t100=${formatMetric(t100)} s; Etkinleştirme=${formatMetric(officialActivation)} s; ΔP=${formatMetric(deltaPowerMw, 3)} MW; TRP-A/B/C=${formatMetric(trp.TRP_A.percentage, 3)}/${formatMetric(trp.TRP_B.percentage, 3)}/${formatMetric(trp.TRP_C.percentage, 3)} %.`
   };
@@ -358,9 +376,11 @@ function evaluatePfkBessReserve(record, metadata) {
   };
 }
 
-function evaluatePfkSensitivity(record, metadata) {
+function evaluatePfkSensitivity(record, metadata, plant) {
   const rows = record.rows;
   const settings = PFK_CRITERIA.sensitivity;
+  const adapter = getPfkPlantAdapter(plant);
+  const primarySignal = adapter.primaryControlSignal;
   const sampleSeconds = median(sampleDeltas(rows)) || 0.1;
   const minimumRows = Math.max(5, Math.ceil(settings.minimumPlateauSeconds / sampleSeconds));
   const targetFor = (frequency) => {
@@ -388,23 +408,25 @@ function evaluatePfkSensitivity(record, metadata) {
     const fallbackBaseline = rows.slice(Math.max(0, segment.startIndex - Math.ceil(20 / sampleSeconds)), segment.startIndex);
     const referenceRows = baselineRows.length ? baselineRows : fallbackBaseline;
     const baselinePower = average(referenceRows.map((row) => number(row.active_power_mw)));
-    const baselineGuideVane = average(referenceRows.map((row) => number(row.guide_vane_pct)));
-    const guideNoise = standardDeviation(referenceRows.map((row) => number(row.guide_vane_pct)));
+    const baselinePrimaryControl = average(referenceRows.map((row) => number(row[primarySignal])));
+    const primaryControlNoise = standardDeviation(referenceRows.map((row) => number(row[primarySignal])));
     const meanPower = average(segment.rows.map((row) => number(row.active_power_mw)));
     const meanFrequency = average(segment.rows.map((row) => number(row.test_frequency_hz)));
-    const meanGuideVane = average(segment.rows.map((row) => number(row.guide_vane_pct)));
-    const guideVaneDeltaPct = meanGuideVane - baselineGuideVane;
-    const guideEvidenceThresholdPct = Math.max(0.01, Math.min(settings.guideResponseMinimumPct, 3 * (Number.isFinite(guideNoise) ? guideNoise : 0)));
-    const guideVaneEvidence = Number.isFinite(meanGuideVane) && Number.isFinite(baselineGuideVane) && Math.abs(guideVaneDeltaPct) >= guideEvidenceThresholdPct;
+    const meanPrimaryControl = average(segment.rows.map((row) => number(row[primarySignal])));
+    const primaryControlDelta = meanPrimaryControl - baselinePrimaryControl;
+    const primaryEvidenceThreshold = Math.max(0.01, Math.min(settings.guideResponseMinimumPct, 3 * (Number.isFinite(primaryControlNoise) ? primaryControlNoise : 0)));
+    const primaryControlEvidence = Number.isFinite(meanPrimaryControl) && Number.isFinite(baselinePrimaryControl) && Math.abs(primaryControlDelta) >= primaryEvidenceThreshold;
     const startTime = number(rows[segment.startIndex].time_s);
     return {
       targetFrequencyHz: segment.target,
       frequencyHz: segment.target,
       measuredFrequencyHz: meanFrequency,
       deltaPowerMw: meanPower - baselinePower,
-      guideVaneDeltaPct,
-      guideVaneEvidence,
-      guideEvidenceThresholdPct,
+      primaryControlSignal: primarySignal,
+      primaryControlLabel: adapter.primaryControlLabel,
+      primaryControlDelta,
+      primaryControlEvidence,
+      primaryEvidenceThreshold,
       measuredDeadbandMhz: Math.abs(segment.target - PFK_CRITERIA.reserve.nominalFrequencyHz) * 1000,
       sampleCount: segment.rows.length,
       chartRows: rows.slice(Math.max(0, segment.startIndex - Math.ceil(15 / sampleSeconds)), Math.min(rows.length, segment.endIndex + Math.ceil(15 / sampleSeconds) + 1)).map((row) => ({ ...row, time_s: number(row.time_s) - startTime }))
@@ -412,11 +434,32 @@ function evaluatePfkSensitivity(record, metadata) {
   });
   const passed = results.length === settings.requiredSteps
     && settings.targetsHz.every((target, index) => results[index]?.targetFrequencyHz === target)
-    && results.every((item) => item.guideVaneEvidence && item.measuredDeadbandMhz <= settings.deadbandLimitMhz);
+    && results.every((item) => item.primaryControlEvidence && item.measuredDeadbandMhz <= settings.deadbandLimitMhz);
   return {
     status: passed ? "GEÇTİ" : "İNCELEME GEREKLİ",
-    detail: results.length ? `Tek CSV içinde ${results.length}/4 hassasiyet basamağı tespit edildi: ${results.map((item) => `${item.targetFrequencyHz.toFixed(3)} Hz / ayar kanadı Δ=${formatMetric(item.guideVaneDeltaPct, 3)} % / ölü bant=${formatMetric(item.measuredDeadbandMhz, 1)} mHz`).join("; ")}` : "Hassasiyet frekans basamakları tek CSV içinde tespit edilemedi.",
-    metrics: { sensitivityResults: results, segmentCount: results.length, sampleMs: sampleSeconds * 1000, deadbandLimitMhz: settings.deadbandLimitMhz }
+    detail: results.length ? `Tek CSV içinde ${results.length}/4 hassasiyet basamağı tespit edildi: ${results.map((item) => `${item.targetFrequencyHz.toFixed(3)} Hz / ${adapter.primaryControlLabel} Δ=${formatMetric(item.primaryControlDelta, 3)} ${adapter.primaryControlUnit} / ölü bant=${formatMetric(item.measuredDeadbandMhz, 1)} mHz`).join("; ")}` : "Hassasiyet frekans basamakları tek CSV içinde tespit edilemedi.",
+    metrics: { profile: adapter.profile, primaryControlSignal: primarySignal, primaryControlLabel: adapter.primaryControlLabel, sensitivityResults: results, segmentCount: results.length, sampleMs: sampleSeconds * 1000, deadbandLimitMhz: settings.deadbandLimitMhz }
+  };
+}
+
+function evaluatePfkStorageSensitivity(record, metadata, plant) {
+  const adapter = getPfkPlantAdapter(plant);
+  const sampleSeconds = median(sampleDeltas(record.rows)) || 0.1;
+  const signalKeys = [adapter.primaryControlSignal, ...adapter.extraSignals.map((signal) => signal.key)];
+  const availableSignals = signalKeys.filter((key) => record.rows.some((row) => Number.isFinite(number(row[key]))));
+  const hasFrequency = record.rows.some((row) => Number.isFinite(number(row.test_frequency_hz)) || Number.isFinite(number(row.grid_frequency_hz)));
+  return {
+    status: "TEKNİK ÖN DEĞERLENDİRME",
+    detail: `PFK depolama profili ayrı değerlendirilmiştir. Kullanılabilir depolama kanalları: ${availableSignals.length ? availableSignals.join(", ") : "Bilgi girilmedi"}. Resmî kabul formülü tanımlı olmadığından otomatik GEÇTİ/KALDI kararı üretilmedi.`,
+    metrics: {
+      profile: "PFK_STORAGE",
+      primaryControlSignal: adapter.primaryControlSignal,
+      primaryControlLabel: adapter.primaryControlLabel,
+      availableSignals,
+      hasFrequency,
+      rowCount: record.rows.length,
+      sampleMs: sampleSeconds * 1000
+    }
   };
 }
 
@@ -554,7 +597,9 @@ export function evaluateRecord(record, context) {
   if (service === "PFK" && record.step.kind === "reserve") return evaluatePfkReserve(record, metadata, plant);
   if (service === "PFK" && record.step.kind === "reserve_sequence") return evaluatePfkReserveSequence(record, metadata, plant);
   if (service === "PFK" && record.step.kind === "bess_reserve") return evaluatePfkBessReserve(record, metadata);
-  if (service === "PFK" && record.step.kind === "sensitivity") return evaluatePfkSensitivity(record, metadata);
+  if (service === "PFK" && record.step.kind === "sensitivity") return pfkProfileForPlant(plant) === "PFK_STORAGE"
+    ? evaluatePfkStorageSensitivity(record, metadata, plant)
+    : evaluatePfkSensitivity(record, metadata, plant);
   if (service === "PFK" && record.step.kind === "validation") return evaluatePfkValidation(record, metadata);
   if (service === "HFK") return evaluateHfk(record, metadata);
   if (service === "RGDH") return evaluateRgdh(record, metadata);

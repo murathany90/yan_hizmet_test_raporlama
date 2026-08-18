@@ -1,4 +1,4 @@
-﻿# YHDA_VERSION=0.7.1
+﻿# YHDA_VERSION=0.7.2
 # TEST_SERVICE=SFK
 # PLANT_TYPE=EDUEDT
 # STEP_ID=AGC_RAISE
@@ -16,7 +16,7 @@
 # CALIBRATION_DATE=2026-02-01
 # CALIBRATION_CERT_NO=YHDA-CAL-2026-001
 # TEST_ENGINEER=Sentetik Test Verisi
-# REPORT_PREPARED_BY=YDA v0.7.1
+# REPORT_PREPARED_BY=YDA v0.7.2
 # RECORDING_COMPUTER=Saha Dizüstü Bilgisayarı
 # SAMPLE_PERIOD_MS=1000
 # SFK_MIN_MW=-40
@@ -26,7 +26,7 @@
 # SETPOINT_ROUNDTRIP_S=4
 # ENERGY_CAPACITY_MWH=200
 # SOC_INITIAL_PERCENT=65
-# YDA_VERSION=0.7.1
+# YDA_VERSION=0.7.2
 ZAMAN;SIRA_NO;agc_setpoint_mw;active_power_mw;setpoint_feedback_mw;grid_frequency_hz;lmin;lmax;lloc;lrem;lman;lmic;lpwr;genstat;pfco;governor_droop_pct;soc_pct;stored_energy_mwh;available_up_mw;available_down_mw
 16.8.2026 09:00:00,0s;1;0;-0,080511;0;50,003164;1;1;0;1;0;0;1;1;1;8;65,000000;130,000000;45;45
 16.8.2026 09:00:01,0s;2;0;0,043910;0;49,999705;1;1;0;1;0;0;1;1;1;8;65,000000;130,000000;45;45

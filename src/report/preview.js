@@ -1,10 +1,10 @@
 import { escapeHtml } from "../utils/text.js";
 import { isMinutesReport } from "../app/settings.js";
 import { recordsForReportSection } from "./record-selection.js";
-import { pfkMinutesDetails, pfkSimulationSvg } from "./pfk-official.js";
+import { officialPfkConclusionTables, pfkMinutesDetails, pfkSimulationSvg } from "./pfk-official.js";
 
 const esc = (value) => escapeHtml(String(value ?? ""));
-const statusBadge = (status) => `<span class="status ${status === "GEÇTİ" ? "pass" : status === "KALDI" ? "fail" : status.includes("TASLAK") || status.includes("ÖN") ? "draft" : "info"}">${esc(status)}</span>`;
+const statusBadge = (status) => `<span class="status ${["GEÇTİ", "OLUMLU"].includes(status) ? "pass" : ["KALDI", "OLUMSUZ"].includes(status) ? "fail" : status.includes("TASLAK") || status.includes("ÖN") ? "draft" : "info"}">${esc(status)}</span>`;
 
 const recordsFor = recordsForReportSection;
 function certificateReserveRows(model) {
@@ -15,19 +15,9 @@ function certificateReserveRows(model) {
 const metric = (value, digits = 3) => Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : "—";
 function reserveChecklist(record) {
   const metrics = record.metrics ?? {};
-  const trp = metrics.trp ?? {};
-  const checks = [
-    ["100 ms kayıt çözünürlüğü", `${metric(metrics.sampleMs, 0)} ms`, Number(metrics.sampleMs) <= 102],
-    ["Pnom / RPmax metadata", `${metric(metrics.pNomMw)} / ${metric(metrics.reserveMw)} MW`, Number(metrics.pNomMw) > 0 && Number(metrics.reserveMw) > 0],
-    ["Δtd", `${metric(metrics.deltaTdSeconds)} s`, Number(metrics.deltaTdSeconds) <= 4],
-    ["t50", `${metric(metrics.t50Seconds)} s`, Number(metrics.t50Seconds) <= 15],
-    ["Dahili t100", `${metric(metrics.t100Seconds)} s`, Number(metrics.t100Seconds) <= 30],
-    ["Resmî etkinleştirme", `${metric(metrics.officialActivationTimeSeconds)} s`, Number(metrics.officialActivationTimeSeconds) <= 30],
-    ["90–900 s sürdürme", `${metric(metrics.sustainSeconds, 1)} s`, Number(metrics.sustainSeconds) >= 900],
-    ["TRP-A", `${metric(trp.TRP_A?.percentage)} %`, Number(trp.TRP_A?.percentage) >= 90],
-    ["TRP-B / TRP-C", `${metric(trp.TRP_B?.percentage)} / ${metric(trp.TRP_C?.percentage)} %`, Number(trp.TRP_B?.percentage) >= 90 && Number(trp.TRP_C?.percentage) >= 90]
-  ];
-  return `<h5>Resmî kontrol listesi</h5><div class="table-wrap"><table><thead><tr><th>Kontrol</th><th>Ölçülen değer</th><th>Sonuç</th></tr></thead><tbody>${checks.map(([label, value, pass]) => `<tr><td>${esc(label)}</td><td>${esc(value)}</td><td>${statusBadge(pass ? "GEÇTİ" : "KALDI")}</td></tr>`).join("")}</tbody></table></div>`;
+  const checks = metrics.officialChecklist ?? [];
+  if (!checks.length) return `<div class="warning-note">Resmî event checklist'i için yeterli veri yok.</div>`;
+  return `<h5>Resmî kontrol listesi</h5><div class="table-wrap"><table><thead><tr><th>Kriter</th><th>Resmî kontrol</th><th>Ölçülen değer</th><th>Sınır</th><th>Kanıt</th><th>Sonuç</th></tr></thead><tbody>${checks.map((check) => `<tr><td>${esc(check.criterionId)}</td><td>${esc(check.officialText)}</td><td>${esc(check.measuredValue)}</td><td>${esc(check.limitText)}</td><td>${esc(check.evidenceRef)}</td><td>${statusBadge(check.result)}</td></tr>`).join("")}</tbody></table></div>`;
 }
 function reserveKpiTable(records) {
   return `<div class="table-wrap"><table><thead><tr><th>Olay</th><th>Pnom</th><th>Pset</th><th>ΔP</th><th>2% Pnom</th><th>1% Pnom</th><th>Δtd</th><th>Etkinleştirme</th><th>TRP A/B/C</th><th>Sonuç</th></tr></thead><tbody>${records.map((record) => { const metrics = record.metrics ?? {}; const trp = metrics.trp ?? {}; return `<tr><td>${esc(record.label || record.name)}</td><td>${metric(metrics.pNomMw)} MW</td><td>${metric(metrics.pSetMw)} MW</td><td>${metric(metrics.deltaPowerMw)} MW</td><td>${metric(Number(metrics.pNomMw) * 0.02)} MW</td><td>${metric(Number(metrics.pNomMw) * 0.01)} MW</td><td>${metric(metrics.deltaTdSeconds)} s</td><td>${metric(metrics.officialActivationTimeSeconds)} s</td><td>${metric(trp.TRP_A?.percentage)} / ${metric(trp.TRP_B?.percentage)} / ${metric(trp.TRP_C?.percentage)} %</td><td>${statusBadge(record.status)}</td></tr>`; }).join("")}</tbody></table></div>${records.map(reserveChecklist).join("")}`;
@@ -67,8 +57,9 @@ function pfkSimulation() {
   return `<p>Şebeke frekansı ve kontrollü test sinyali, kayıt altındaki simülasyon yöntemiyle birleştirilerek hız regülatörü girişine uygulanır. Referans frekans ayrı izlenir.</p><figure class="pfk-simulation-diagram">${pfkSimulationSvg()}<figcaption>PFK frekans simülasyonu blok şeması</figcaption></figure>`;
 }
 function pfkConclusion(model) {
-  const events = certificateReserveRows(model);
-  return `<h4>Primer Frekans Kontrol Performans Testleri Özet Tablosu</h4>${reserveKpiTable(events)}<h4>Primer Frekans Kontrol Performans Testleri Sonuç Tablosu</h4><div class="table-wrap"><table><thead><tr><th>Teknik değerlendirme</th><th>Belge tamlığı</th><th>Açıklama</th></tr></thead><tbody><tr><td>${statusBadge(model.evaluationStatus)}</td><td>${statusBadge(model.documentStatus)}</td><td>Teknik kabul sonucu ile imza/metadata tamamlık durumu ayrı izlenir.</td></tr></tbody></table></div><p>${esc(model.documentText.reportConclusion)}</p>`;
+  const tables = officialPfkConclusionTables(model);
+  const render = (headers, rows) => `<div class="table-wrap"><table><thead><tr>${headers.map((header) => `<th>${esc(header)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((value) => `<td>${esc(value)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${headers.length}">Yüklenmiş kayıt yok</td></tr>`}</tbody></table></div>`;
+  return `<h4>Primer Frekans Kontrol Performans Testleri Özet Tablosu</h4>${render(tables.summaryHeaders, tables.summaryRows)}<h4>Primer Frekans Kontrol Performans Testleri Sonuç Tablosu</h4>${render(tables.matrixHeaders, tables.matrixRows)}<div class="table-wrap"><table><tbody>${tables.statusRows.map(([label, value]) => `<tr><th>${esc(label)}</th><td>${statusBadge(value)}</td></tr>`).join("")}</tbody></table></div><p>${esc(model.documentText.reportConclusion)}</p>`;
 }
 function certificate(model) {
   const rows = certificateReserveRows(model).map((record) => `<tr><td>${esc(record.name)}</td><td>${metric(record.metrics.pNomMw)}</td><td>${metric(record.metrics.pSetMw)}</td><td>${metric(record.metrics.deltaPowerMw)}</td><td>${metric(record.metrics.officialActivationTimeSeconds)}</td><td>${metric(record.metrics.sustainSeconds, 1)}</td><td>${metric(record.metrics.trp?.TRP_A?.percentage)}</td><td>${metric(record.metrics.trp?.TRP_B?.percentage)}</td><td>${metric(record.metrics.trp?.TRP_C?.percentage)}</td><td>${esc(record.metadata?.DEADBAND_MHZ || model.metadata.DEADBAND_MHZ)}</td><td>${statusBadge(record.status)}</td></tr>`).join("");

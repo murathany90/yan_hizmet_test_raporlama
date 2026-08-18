@@ -2,6 +2,21 @@
 
 Bu proje [Semantic Versioning](https://semver.org/) yaklaşımını izler.
 
+## [0.7.2] - 2026-08-18
+
+### Düzeltildi
+
+- PFK evaluator, grafik ve kanal tablolarındaki HES'e özgü proses sinyali varsayımı plant-adapter sözleşmesiyle kaldırıldı: DGKÇS `fuel_valve_pct`, TES `regulator_valve_pct` ile buhar basıncı/sıcaklığı, EDÜ/EDT ise ayrı depolama profiliyle çalışır.
+- 24 saat Frekans–Güç scatter figure'ı açık frekans x ekseni, aktif güç y ekseni ve ±%1 Pnom zarfı ile üretildi; boş grafik regresyonla engellendi.
+- PFK G) bölümündeki teknik/belge özet tablosu, resmî olay performans özeti ve ünite sonuç matrisiyle değiştirildi.
+- Tutanak tarihleri test, belge ve doğrulama dönemleri için ayrı metadata alanlarından çözülür; CSV son satırı test bitiş tarihini zorla değiştirmez.
+- Yapılandırma kaynaklarındaki bozuk Türkçe karakterler normalize edildi.
+
+### Eklendi
+
+- Her rezerv olayı için dokuz maddelik resmî checklist veri modeli (`criterionId`, metin, ölçüm, sınır, sonuç, kanıt) ve PDF/DOCX/HTML paritesi.
+- Public HES/DGKÇS/TES 4-CSV plant-matrix regression'ı, EDÜ/EDT storage routing smoke testi ve özel fixture için açık `SKIPPED_PRIVATE_FIXTURE` sonucu.
+
 ## [0.7.1] - 2026-08-18
 
 ### Değişti

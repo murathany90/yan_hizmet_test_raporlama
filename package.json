@@ -1,6 +1,6 @@
 {
   "name": "yda",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "private": true,
   "description": "YDA (Yan Hizmetler Testleri Doğrulama Aracı)",
   "type": "module",
@@ -16,10 +16,12 @@
     "test": "vitest run",
     "test:unit": "vitest run tests/unit",
     "test:reports": "vitest run tests/report",
-    "test:kopru": "node --expose-gc --max-old-space-size=2048 scripts/check-kopru-pfk-fixture.mjs",
+    "test:plant-matrix": "node --expose-gc --max-old-space-size=3072 scripts/check-pfk-plant-matrix.mjs",
+    "test:private": "node --expose-gc --max-old-space-size=2048 scripts/check-kopru-pfk-fixture.mjs",
+    "test:kopru": "npm run test:private",
     "test:utf8": "vitest run tests/unit/utf8.test.js",
     "test:ui": "playwright test",
-    "test:all": "npm run check:js && npm run validate:csv && npm run test && npm run build && npm run test:ui",
+    "test:all": "npm run check:js && npm run validate:csv && npm run test && npm run test:plant-matrix && npm run build && npm run test:ui",
     "tauri": "tauri"
   },
   "dependencies": {

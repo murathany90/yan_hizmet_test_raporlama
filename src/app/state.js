@@ -1,7 +1,7 @@
 import { CONFIGS } from "./config-runtime.js";
 import { loadDocumentSettings, patchDocumentSettings as patchSettings, resetDocumentSettings as resetSettings } from "./settings.js";
 
-export const APP_VERSION = "0.7.1";
+export const APP_VERSION = "0.7.2";
 
 export function modeKey(service, plant) {
   return `${service}:${plant}`;

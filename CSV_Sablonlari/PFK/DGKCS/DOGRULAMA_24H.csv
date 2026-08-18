@@ -2,7 +2,7 @@
 # PLANT_TYPE=DGKCS
 # STEP_ID=DOGRULAMA_24H
 # SAMPLE_PERIOD_MS=100
-# YDA_VERSION=0.7.1
-# YHDA_VERSION=0.7.1
+# YDA_VERSION=0.7.2
+# YHDA_VERSION=0.7.2
 ZAMAN;SIRA_NO;grid_frequency_hz;active_power_mw;active_power_reference_mw;fuel_valve_pct
 1.1.2026 00:00:00,0s;1;50,000;;;

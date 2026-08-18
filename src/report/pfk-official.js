@@ -11,17 +11,92 @@ function display(value) {
   return String(value ?? "").trim() || "Bilgi girilmedi";
 }
 
+function metric(value, digits = 3) {
+  return Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : "—";
+}
+
+function eventRows(model) {
+  return model.records.flatMap((record) => (record.events ?? []).map((event) => ({
+    ...event,
+    unitId: event.metadata?.UNIT_ID || record.metadata?.UNIT_ID || "Tesis kapsamı",
+    unitName: event.metadata?.UNIT_NAME || record.metadata?.UNIT_NAME || "",
+    sourceRecord: record
+  })));
+}
+
+function unitResult(events, predicate) {
+  if (!events.length) return "İNCELEME GEREKLİ";
+  const results = events.map(predicate);
+  if (results.some((result) => result === "OLUMSUZ" || result === false)) return "OLUMSUZ";
+  if (results.every((result) => result === "OLUMLU" || result === true)) return "OLUMLU";
+  return "İNCELEME GEREKLİ";
+}
+
+function checklistResult(event, criterionId) {
+  return event.metrics?.officialChecklist?.find((item) => item.criterionId === criterionId)?.result ?? "İNCELEME GEREKLİ";
+}
+
+/** The single semantic source for official PFK conclusion tables. */
+export function officialPfkConclusionTables(model) {
+  const events = eventRows(model);
+  const sensitivity = model.records.filter((record) => record.stepId === "HASSASIYET");
+  const validation = model.records.filter((record) => record.stepId === "DOGRULAMA_24H");
+  const units = [...new Map(events.map((event) => [event.unitId, event])).values()];
+  const summaryRows = events.map((event) => {
+    const metrics = event.metrics ?? {};
+    const trp = metrics.trp ?? {};
+    const unitSensitivity = sensitivity.find((record) => (record.metadata?.UNIT_ID || "Tesis kapsamı") === event.unitId);
+    const sensitivityResult = unitSensitivity?.metrics?.sensitivityResults?.[0];
+    const metadata = event.metadata ?? model.metadata;
+    return [
+      `${event.unitId} — ${event.label || event.eventId}`,
+      `${metric(metrics.pNomMw)} MW`, `${metric(metrics.pSetMw)} MW`, `${metric(metrics.deltaPowerMw)} MW`,
+      `${metric(metrics.officialActivationTimeSeconds)} s`, `${metric(metrics.sustainSeconds, 1)} s`,
+      `${metric(trp.TRP_A?.percentage)} %`, `${metric(trp.TRP_B?.percentage)} %`, `${metric(trp.TRP_C?.percentage)} %`,
+      sensitivityResult ? `${metric(sensitivityResult.measuredFrequencyHz, 3)} Hz` : "İnceleme gerekli",
+      sensitivityResult ? `${metric(sensitivityResult.measuredDeadbandMhz, 1)} mHz` : "İnceleme gerekli",
+      `${display(metadata.DROOP_PERCENT || metadata.DROOP_RANGE_PERCENT)} %`,
+      `${display(metadata.ACTUAL_DROOP_PERCENT || metadata.DROOP_ACTUAL_PERCENT)} %`,
+      event.status
+    ];
+  });
+  const matrixRows = units.map((unit) => {
+    const unitEvents = events.filter((event) => event.unitId === unit.unitId);
+    const unitSensitivity = sensitivity.find((record) => (record.metadata?.UNIT_ID || "Tesis kapsamı") === unit.unitId);
+    const unitValidation = validation.find((record) => (record.metadata?.UNIT_ID || "Tesis kapsamı") === unit.unitId);
+    return [
+      unit.unitId,
+      unitResult(unitEvents, (event) => event.status === "GEÇTİ" ? "OLUMLU" : event.status === "KALDI" ? "OLUMSUZ" : "İNCELEME GEREKLİ"),
+      unitResult(unitEvents, (event) => checklistResult(event, "PFK-03")),
+      unitResult(unitEvents, (event) => checklistResult(event, "PFK-09")),
+      unitResult(unitEvents, (event) => Number(event.metrics?.sustainSeconds) >= 900),
+      unitResult(unitEvents, (event) => checklistResult(event, "PFK-06")),
+      unitResult(unitEvents, (event) => checklistResult(event, "PFK-07")),
+      unitResult(unitEvents, (event) => checklistResult(event, "PFK-08")),
+      unitSensitivity?.status === "GEÇTİ" ? "OLUMLU" : unitSensitivity?.status === "KALDI" ? "OLUMSUZ" : "İNCELEME GEREKLİ",
+      unitValidation?.status === "GEÇTİ" ? "OLUMLU" : unitValidation?.status === "KALDI" ? "OLUMSUZ" : "İNCELEME GEREKLİ"
+    ];
+  });
+  return Object.freeze({
+    summaryHeaders: ["Ünite / olay", "Pnom", "Pset", "ΔP", "Etkinleştirme", "Sürdürme", "TRP_A", "TRP_B", "TRP_C", "Hassasiyet", "Ölü bant", "Hız eğimi — ayarlanan", "Hız eğimi — gerçekleşen", "Sonuç"],
+    summaryRows,
+    matrixHeaders: ["Ünite", "Rezerv miktarı", "Etkinleştirme ≤30 s", "Doğrusallık", "Sürdürme ≥15 dk", "TRP_A ≥90%", "TRP_B ≥90%", "TRP_C ≥90%", "Hassasiyet ≤±10 mHz", "24 saat doğrulama"],
+    matrixRows,
+    statusRows: [["Teknik değerlendirme", model.evaluationStatus], ["Belge tamlığı", model.documentStatus]]
+  });
+}
+
 export function pfkMinutesDetails(model) {
   const validation = model.records.find((record) => record.stepId === "DOGRULAMA_24H");
   const rows = validation?.metrics?.validationRows ?? [];
-  const start = rows.at(0)?.zaman ?? rows.at(0)?.timestamp ?? validation?.evidence?.start;
-  const end = rows.at(-1)?.zaman ?? rows.at(-1)?.timestamp ?? validation?.evidence?.end;
+  const csvStart = rows.at(0)?.zaman ?? rows.at(0)?.timestamp ?? validation?.evidence?.start;
+  const csvEnd = rows.at(-1)?.zaman ?? rows.at(-1)?.timestamp ?? validation?.evidence?.end;
   const meta = model.metadata;
   return [
     ["Test dönemi", `${display(meta.TEST_START_DATE || meta.TEST_DATE)} – ${display(meta.TEST_END_DATE || meta.TEST_DATE)}`],
-    ["Belge düzenleme tarihi", display(meta.DOCUMENT_DATE || meta.TEST_END_DATE || meta.TEST_DATE)],
-    ["24 saat doğrulama başlangıcı", display(start)],
-    ["24 saat doğrulama bitişi", display(end)],
+    ["Belge düzenleme tarihi", display(meta.DOCUMENT_DATE || meta.TEST_DATE)],
+    ["24 saat doğrulama başlangıcı", display(meta.VALIDATION_START_DATETIME || meta.VALIDATION_START || csvStart)],
+    ["24 saat doğrulama bitişi", display(meta.VALIDATION_END_DATETIME || meta.VALIDATION_END || csvEnd)],
     ["Örnekleme", `${Number.isFinite(Number(validation?.metrics?.sampleMs)) ? Number(validation.metrics.sampleMs).toFixed(0) : "100"} ms`],
     ["Tesis toplam kurulu güç", `${display(meta.PLANT_TOTAL_INSTALLED_MW)} MW`],
     ["Ünite Pnom / RPmax", `${display(meta.UNIT_PNOM_MW || meta.PNOM_MW)} MW / ${display(meta.RPMAX_MW)} MW`],

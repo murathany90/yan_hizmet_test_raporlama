@@ -1,6 +1,15 @@
-# YDA (Yan Hizmetler Testleri Doğrulama Aracı) v0.7.1
+# YDA (Yan Hizmetler Testleri Doğrulama Aracı) v0.7.2
 
 YDA (Yan Hizmetler Testleri Doğrulama Aracı); PFK, RGDH, HFK, SFHM ve SFK test kayıtlarını yerel olarak doğrulayan, grafikleyen ve ortak bir rapor modelinden PDF/DOCX çıktısı üreten çevrimdışı odaklı bir web/Tauri uygulamasıdır.
+
+## v0.7.2 — tesis bağımsız PFK paritesi ve resmî belge tamamlama
+
+- PFK tesis-adapter sözleşmesi HES ayar kanadını, DGKÇS yakıt vanasını, TES reglaj vanası ile buhar kanıtlarını tek motorla yönetir; depolama (EDÜ/EDT) ayrı `PFK_STORAGE` teknik ön değerlendirme profilindedir.
+- Resmî PFK event checklist'i dokuz kriter, ölçülen değer, sınır, sonuç ve kanıt referansıyla PDF/DOCX/HTML'de ortak `ReportModel` üzerinden üretilir.
+- G) Sonuç, olay bazlı resmî performans özeti ve ünite bazlı kriter matrisi olarak iki tabloya ayrılmıştır; teknik/belge durumları ayrı küçük kutuda gösterilir.
+- 24 saat Frekans–Güç saçılımı frekansı x, aktif gücü y ekseninde; beklenen PFK karakteristiği ve ±%1 Pnom zarfıyla üretilir. Public HES/DGKÇS/TES regression'ı boş figure'ı reddeder.
+- Tutanak tarih alanları test, belge ve 24 saat doğrulama dönemi için ayrıdır. Kayıt metadata, kampanya, kullanıcı ayarı ve yalnız tanımlayıcı adapter varsayımları öncelik sırasıyla birleşir.
+- `npm run test:plant-matrix` public sentetik tesis matrisini; `npm run test:private` ise varsa yerel gerçek-fixture regression'ını çalıştırır. Fixture yoksa açıkça `SKIPPED_PRIVATE_FIXTURE` yazılır.
 
 ## v0.7.1 — Köprü HES PFK resmî zarf ve belge paritesi
 

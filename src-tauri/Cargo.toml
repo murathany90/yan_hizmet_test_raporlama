@@ -1,6 +1,6 @@
 [package]
 name = "yda"
-version = "0.7.1"
+version = "0.7.2"
 description = "YDA (Yan Hizmetler Testleri Doğrulama Aracı)"
 authors = ["YDA Contributors"]
 edition = "2021"

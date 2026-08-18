@@ -1,10 +1,12 @@
+import { getPfkPlantAdapter, pfkProcessSignalDefinitions, plantForPfkRecord } from "../criteria/pfk-plant-adapters.js";
+
 export const OFFICIAL_TEIAS_PFK = "OFFICIAL_TEIAS_PFK";
 
 const officialColors = Object.freeze({
   grid: "#bd2f2f",
   test: "#df5959",
   power: "#16875c",
-  guide: "#2166ac",
+  process: "#2166ac",
   setpoint: "#174a8b",
   limit: "#bd2f2f",
   expected: "#174a8b"
@@ -19,11 +21,13 @@ const officialPowerSeries = [
 ];
 
 function officialReserveOverview(record) {
+  const plant = plantForPfkRecord(record);
+  const adapter = getPfkPlantAdapter(plant);
   const definitions = [
     ["grid_frequency_hz", "Şebeke frekansı", "Hz", officialColors.grid],
     ["test_frequency_hz", "Simüle frekans", "Hz", officialColors.test],
     ["active_power_mw", "Aktif güç", "MW", officialColors.power],
-    ["guide_vane_pct", "Ayar kanadı", "%", officialColors.guide]
+    [adapter.primaryControlSignal, adapter.primaryControlLabel, adapter.primaryControlUnit, officialColors.process]
   ];
   return definitions.filter(([key]) => record.step.columns.includes(key)).map(([key, label, unit, color]) => ({
     title: `Rezerv genel kayıt — ${label}`,
@@ -43,6 +47,8 @@ export function seriesSetsFor(record, service) {
     ];
   }
   if (service === "PFK" && record.analysis?.metrics?.validationRows) {
+    const plant = plantForPfkRecord(record);
+    const adapter = getPfkPlantAdapter(plant);
     const metrics = record.analysis.metrics;
     const graph = (title, rows, series) => ({
       title,
@@ -52,19 +58,23 @@ export function seriesSetsFor(record, service) {
       series
     });
     const general = metrics.validationRows;
+    const scatterRows = general.filter((row) => Number.isFinite(row.grid_frequency_hz) && Number.isFinite(row.active_power_mw));
     const power = [["active_power_mw", "Aktif güç", "left", "MW", officialColors.power], ["expected_active_power_mw", "Beklenen PFK gücü", "left", "MW", officialColors.expected], ["tolerance_lower_mw", "Alt ±1% Pnom", "left", "MW", officialColors.limit, "dashed"], ["tolerance_upper_mw", "Üst ±1% Pnom", "left", "MW", officialColors.limit, "dashed"]];
     return [
       graph("24 saat genel — aktif güç", general, power),
-      graph("24 saat genel — ayar kanadı", general, [["guide_vane_pct", "Ayar kanadı", "left", "%", officialColors.guide]]),
+      graph(`24 saat genel — ${adapter.primaryControlLabel.toLocaleLowerCase("tr-TR")}`, general, [[adapter.primaryControlSignal, adapter.primaryControlLabel, "left", adapter.primaryControlUnit, officialColors.process]]),
       graph("24 saat genel — şebeke frekansı", general, [["grid_frequency_hz", "Şebeke frekansı", "left", "Hz", officialColors.grid]]),
       graph("24 saat pozitif frekans kritik penceresi — frekans", metrics.positiveCriticalWindow, [["grid_frequency_hz", "Şebeke frekansı", "left", "Hz", officialColors.grid]]),
       graph("24 saat pozitif frekans kritik penceresi — aktif güç", metrics.positiveCriticalWindow, power),
       graph("24 saat negatif frekans kritik penceresi — frekans", metrics.negativeCriticalWindow, [["grid_frequency_hz", "Şebeke frekansı", "left", "Hz", officialColors.grid]]),
       graph("24 saat negatif frekans kritik penceresi — aktif güç", metrics.negativeCriticalWindow, power),
-      { title: "24 saat Frekans–Güç saçılımı ve PFK zarfı", rows: general, profile: OFFICIAL_TEIAS_PFK, xMode: "VALUE", xKey: "grid_frequency_hz", chartType: "scatter", series: power }
+      { title: "24 saat Frekans–Güç saçılımı ve PFK zarfı", rows: scatterRows, profile: OFFICIAL_TEIAS_PFK, xMode: "VALUE", xKey: "grid_frequency_hz", chartType: "scatter", series: power }
     ];
   }
   if (service === "PFK" && record.step.kind === "sensitivity" && record.analysis?.metrics?.sensitivityResults?.length) {
+    const plant = plantForPfkRecord(record);
+    const adapter = getPfkPlantAdapter(plant);
+    const processSeries = pfkProcessSignalDefinitions(plant).map((signal, index) => [signal.key, signal.label, index ? "left" : "right", signal.unit, index ? "#7550a0" : officialColors.process]);
     return record.analysis.metrics.sensitivityResults.map((result) => ({
       title: `Hassasiyet — ${result.targetFrequencyHz.toFixed(3)} Hz`,
       rows: result.chartRows,
@@ -72,9 +82,9 @@ export function seriesSetsFor(record, service) {
       xMode: "RELATIVE_SECONDS",
       series: [
         ["test_frequency_hz", "Simüle frekans", "left", "Hz", officialColors.test],
-        ["guide_vane_pct", "Ayar kanadı", "right", "%", officialColors.guide],
-        ["active_power_mw", "Aktif güç", "right", "MW", officialColors.power]
-      ]
+        ["active_power_mw", "Aktif güç", "right", "MW", officialColors.power],
+        ...processSeries
+      ].filter(([key]) => result.chartRows.some((row) => Number.isFinite(row[key])))
     }));
   }
   if (service === "PFK" && record.step.kind === "reserve_sequence") return officialReserveOverview(record);
@@ -83,6 +93,7 @@ export function seriesSetsFor(record, service) {
   const sets = [];
 
   if (service === "PFK") {
+    const plant = plantForPfkRecord(record);
     sets.push({
       title: "Aktif Güç / Frekans",
       series: [
@@ -92,16 +103,9 @@ export function seriesSetsFor(record, service) {
         ["test_frequency_hz", "Simüle Frekans", "right", "Hz"]
       ].filter(include)
     });
-    const auxiliary = [
-      ["guide_vane_pct", "Ayar Kanadı", "left", "%"],
-      ["fuel_valve_pct", "Yakıt Vanası", "left", "%"],
-      ["regulator_valve_pct", "Reglaj Vanası", "left", "%"],
-      ["steam_pressure_bar", "Buhar Basıncı", "right", "bar"],
-      ["steam_temperature_c", "Buhar Sıcaklığı", "right", "°C"],
-      ["soc_pct", "SoC", "right", "%"],
-      ["stored_energy_mwh", "Depolanmış Enerji", "left", "MWh"],
-      ["dc_power_mw", "DC Güç", "left", "MW"]
-    ].filter(include);
+    const auxiliary = pfkProcessSignalDefinitions(plant)
+      .map((signal, index) => [signal.key, signal.label, index ? "right" : "left", signal.unit])
+      .filter(include);
     if (auxiliary.length) sets.push({ title: "Yardımcı / Proses Sinyalleri", series: auxiliary });
   } else if (service === "RGDH") {
     sets.push({

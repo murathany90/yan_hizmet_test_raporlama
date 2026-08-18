@@ -1,6 +1,6 @@
 import { isMinutesReport } from "../app/settings.js";
 import { recordsForReportSection } from "./record-selection.js";
-import { pfkMinutesDetails, pfkSimulationSvg } from "./pfk-official.js";
+import { officialPfkConclusionTables, pfkMinutesDetails, pfkSimulationSvg } from "./pfk-official.js";
 
 async function loadPdfMake() {
   const [pdfMakeModule, fontModule] = await Promise.all([import("pdfmake/build/pdfmake.js"), import("pdfmake/build/vfs_fonts.js")]);
@@ -27,9 +27,8 @@ const summaryTable = (records) => records.length && records.every((record) => re
   ? reserveSummaryTable(records)
   : table(["Test adımı", "CSV", "Durum", "Hesap / not"], records.map((record) => [record.name, record.filename, record.status, record.detail]), ["*", 90, 58, "*"], 6.8);
 const reserveChecklist = (record) => {
-  const metrics = record.metrics ?? {}; const trp = metrics.trp ?? {};
-  const rows = [["100 ms kayıt", `${metric(metrics.sampleMs, 0)} ms`, Number(metrics.sampleMs) <= 102], ["Δtd", `${metric(metrics.deltaTdSeconds)} s`, Number(metrics.deltaTdSeconds) <= 4], ["t50 / t100", `${metric(metrics.t50Seconds)} / ${metric(metrics.t100Seconds)} s`, Number(metrics.t50Seconds) <= 15 && Number(metrics.t100Seconds) <= 30], ["Etkinleştirme", `${metric(metrics.officialActivationTimeSeconds)} s`, Number(metrics.officialActivationTimeSeconds) <= 30], ["Sürdürme", `${metric(metrics.sustainSeconds, 1)} s`, Number(metrics.sustainSeconds) >= 900], ["TRP A/B/C", `${metric(trp.TRP_A?.percentage)} / ${metric(trp.TRP_B?.percentage)} / ${metric(trp.TRP_C?.percentage)} %`, Number(trp.TRP_A?.percentage) >= 90 && Number(trp.TRP_B?.percentage) >= 90 && Number(trp.TRP_C?.percentage) >= 90]];
-  return table(["Resmî kontrol", "Ölçülen", "Sonuç"], rows.map(([label, value, passed]) => [label, value, passed ? "OLUMLU" : "OLUMSUZ"]), [170, "*", 62], 6.2);
+  const rows = record.metrics?.officialChecklist ?? [];
+  return table(["Kriter", "Resmî kontrol", "Ölçülen", "Sınır", "Kanıt", "Sonuç"], rows.map((item) => [item.criterionId, item.officialText, item.measuredValue, item.limitText, item.evidenceRef, item.result]), [34, "*", 70, 70, 62, 52], 5.6);
 };
 const evidenceTable = (model) => table(["Dosya", "SHA-256", "Ünite", "STEP_ID", "Satır", "Başlangıç", "Bitiş", "ms"], model.evidence.map((item) => [item.filename, item.sha256, item.unitId, item.stepId, String(item.rowCount), item.start, item.end, Number.isFinite(item.sampleMs) ? item.sampleMs.toFixed(3) : "—"]), [50, 105, 30, 55, 28, 75, 75, 24], 5.2);
 
@@ -107,9 +106,10 @@ function sectionContent(section, model) {
   if (section.type === "evaluation") return [{ text: model.documentText.testResult, fontSize: 8.3, margin: [0, 0, 0, 5] }, { text: `Test sonuçları hedef/ölçülen değerler, ortalama, kararlılık ve kabul kriterleriyle değerlendirildi. Durum: ${model.overallStatus}`, bold: true, fontSize: 8.2 }, summaryTable(model.records)];
   if (section.type === "pfk-conclusion") return [
     { text: "Primer Frekans Kontrol Performans Testleri Özet Tablosu", bold: true, fontSize: 8.5, margin: [0, 0, 0, 3] },
-    reserveSummaryTable(certificateReserveRows(model)),
+    table(officialPfkConclusionTables(model).summaryHeaders, officialPfkConclusionTables(model).summaryRows, ["*", 27, 27, 27, 38, 35, 27, 27, 27, 34, 32, 36, 38, 34], 4.3),
     { text: "Primer Frekans Kontrol Performans Testleri Sonuç Tablosu", bold: true, fontSize: 8.5, margin: [0, 6, 0, 3] },
-    table(["Teknik değerlendirme", "Belge tamlığı", "Açıklama"], [[model.evaluationStatus, model.documentStatus, "Teknik kabul ve belge tamlığı ayrı izlenir."]], [125, 125, "*"], 7),
+    table(officialPfkConclusionTables(model).matrixHeaders, officialPfkConclusionTables(model).matrixRows, ["*", 47, 47, 42, 47, 38, 38, 38, 52, 48], 4.8),
+    table(["Durum", "Sonuç"], officialPfkConclusionTables(model).statusRows, [125, "*"], 7),
     { text: model.documentText.reportConclusion, fontSize: 8.3, margin: [0, 5, 0, 0] }
   ];
   if (section.type === "conclusion") return [{ text: model.documentText.reportConclusion, fontSize: 8.3, margin: [0, 0, 0, 5] }, { text: `Nihai sonuç: ${model.overallStatus}`, bold: true, fontSize: 9, color: model.overallStatus === "GEÇTİ" ? "19724f" : "9b1c1c" }];

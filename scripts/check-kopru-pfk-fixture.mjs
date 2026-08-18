@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { parseCsv } from "../src/csv/parser.js";
 import { resolveCsvRoute } from "../src/csv/metadata.js";
@@ -13,9 +13,23 @@ import { createDocxBuffer } from "../src/report/docx.js";
 import { DEFAULT_DOCUMENT_SETTINGS } from "../src/app/settings.js";
 
 const root = resolve(import.meta.dirname, "..");
+function sourceFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => entry.isDirectory()
+    ? sourceFiles(resolve(directory, entry.name))
+    : entry.name.endsWith(".js") ? [resolve(directory, entry.name)] : []);
+}
+
+function assertProductionSourceIsGeneric() {
+  const forbidden = /Köprü|KOPRU|Kopru|KOPRU_HES|77\.924|7\.7924|54\.86|36\.14|824379|809161|95\.41424|93\.65290/iu;
+  const matches = sourceFiles(resolve(root, "src")).filter((path) => forbidden.test(readFileSync(path, "utf8")));
+  assert.equal(matches.length, 0, `Production source contains private-fixture detail: ${matches.join(", ")}`);
+}
+
+assertProductionSourceIsGeneric();
 const fixtureRoot = resolve(root, "docs", "test_dosyaları", "pfk_test", "örnek_hes", "KOPRU_HES_YDA_DUZELTILMIS_PFK_CSV");
 if (!existsSync(fixtureRoot)) {
-  console.log("KÖPRÜ HES private fixture bulunamadı; fixture regression atlandı.");
+  console.log("SKIPPED_PRIVATE_FIXTURE");
+  console.log("KÖPRÜ HES private fixture bulunamadı; private regression çalıştırılmadı.");
   process.exit(0);
 }
 

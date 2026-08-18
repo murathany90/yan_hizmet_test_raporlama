@@ -93,6 +93,46 @@ export function buildOfficialReserveEnvelope({ direction, pSet, rpMax, pNom, res
   });
 }
 
+function officialChecklistResult(passed, available = true) {
+  if (!available) return "İNCELEME GEREKLİ";
+  return passed ? "OLUMLU" : "OLUMSUZ";
+}
+
+function checklistMetric(value, unit = "") {
+  return Number.isFinite(Number(value)) ? `${Number(value).toFixed(3)}${unit ? ` ${unit}` : ""}` : "Bilgi girilmedi";
+}
+
+/**
+ * Her rezerv olayı için resmî PFK checklist sözleşmesi.
+ * Bu veri PDF, DOCX ve HTML çıktılarında tekrar hesaplanmadan kullanılır.
+ */
+export function buildOfficialReserveChecklist({ eventId, metrics = {}, metadata = {}, stepId = "" }) {
+  const direction = eventId === "NEG200" ? 1 : -1;
+  const directionText = direction > 0 ? "≥" : "≤";
+  const delayLimit = Number(metrics.delayLimitSeconds ?? (metadata.PLANT_TYPE === "HES" ? 4 : 2));
+  const trp = metrics.trp ?? {};
+  const at30 = Number(metrics.directionalPowerAt30Mw);
+  const at90 = Number(metrics.directionalPowerAt90Mw);
+  const lower30 = Number(metrics.directionalLimitAt30Mw);
+  const upper90 = Number(metrics.directionalLimitAt90Mw);
+  const normalOperation = String(metadata.UNIT_OPERATION_MODE ?? metadata.PFK_OPERATION_MODE ?? "").trim();
+  const evidenceRef = `${stepId || "PFK_REZERV"}/${eventId || "EVENT"}`;
+  const directionalPass30 = direction > 0 ? at30 >= lower30 : at30 <= lower30;
+  const directionalPass90 = direction > 0 ? at90 >= upper90 : at90 <= upper90;
+  const allEnvelope = [trp.TRP_A?.percentage, trp.TRP_B?.percentage, trp.TRP_C?.percentage].every((value) => Number(value) >= PFK_CRITERIA.reserve.trpPassRatio * 100);
+  return Object.freeze([
+    Object.freeze({ criterionId: "PFK-01", officialText: "Test sırasında ünite parametreleri normal işletme sınırlarında olmalıdır.", measuredValue: normalOperation || "İşletme modu bilgisi girilmedi", limitText: "Normal işletme modu beyanı", result: officialChecklistResult(Boolean(normalOperation), Boolean(normalOperation)), evidenceRef }),
+    Object.freeze({ criterionId: "PFK-02", officialText: "Δtd sınırı içinde tepki başlamalıdır.", measuredValue: checklistMetric(metrics.deltaTdSeconds, "s"), limitText: `Δtd ≤ ${checklistMetric(delayLimit, "s")}`, result: officialChecklistResult(Number(metrics.deltaTdSeconds) <= delayLimit, Number.isFinite(Number(metrics.deltaTdSeconds))), evidenceRef }),
+    Object.freeze({ criterionId: "PFK-03", officialText: "30. saniyeye kadar gerekli rezerv seviyesine ulaşılmalıdır.", measuredValue: checklistMetric(metrics.officialActivationTimeSeconds, "s"), limitText: "Etkinleştirme ≤ 30 s", result: officialChecklistResult(Number(metrics.officialActivationTimeSeconds) <= 30, Number.isFinite(Number(metrics.officialActivationTimeSeconds))), evidenceRef }),
+    Object.freeze({ criterionId: "PFK-04", officialText: `30. saniye sonrası yönsel alt limit koşulu (${directionText} hedef yönü) sağlanmalıdır.`, measuredValue: checklistMetric(at30, "MW"), limitText: `${directionText} ${checklistMetric(lower30, "MW")}`, result: officialChecklistResult(directionalPass30, Number.isFinite(at30) && Number.isFinite(lower30)), evidenceRef }),
+    Object.freeze({ criterionId: "PFK-05", officialText: `90. saniyeye kadar yönsel üst limit koşulu (${directionText} hedef yönü) sağlanmalıdır.`, measuredValue: checklistMetric(at90, "MW"), limitText: `${directionText} ${checklistMetric(upper90, "MW")}`, result: officialChecklistResult(directionalPass90, Number.isFinite(at90) && Number.isFinite(upper90)), evidenceRef }),
+    Object.freeze({ criterionId: "PFK-06", officialText: "TRP_A içinde en az %90 uygunluk sağlanmalıdır.", measuredValue: checklistMetric(trp.TRP_A?.percentage, "%"), limitText: "TRP_A ≥ %90", result: officialChecklistResult(Number(trp.TRP_A?.percentage) >= 90, Number.isFinite(Number(trp.TRP_A?.percentage))), evidenceRef }),
+    Object.freeze({ criterionId: "PFK-07", officialText: "TRP_B içinde en az %90 uygunluk sağlanmalıdır.", measuredValue: checklistMetric(trp.TRP_B?.percentage, "%"), limitText: "TRP_B ≥ %90", result: officialChecklistResult(Number(trp.TRP_B?.percentage) >= 90, Number.isFinite(Number(trp.TRP_B?.percentage))), evidenceRef }),
+    Object.freeze({ criterionId: "PFK-08", officialText: "TRP_C içinde en az %90 uygunluk sağlanmalıdır.", measuredValue: checklistMetric(trp.TRP_C?.percentage, "%"), limitText: "TRP_C ≥ %90", result: officialChecklistResult(Number(trp.TRP_C?.percentage) >= 90, Number.isFinite(Number(trp.TRP_C?.percentage))), evidenceRef }),
+    Object.freeze({ criterionId: "PFK-09", officialText: "Beklenen tepki grafiği ve resmî zarf ile uyumlu olmalıdır.", measuredValue: allEnvelope ? "TRP bantları resmî zarfla uyumlu" : "Zarf uygunluğu incelenmelidir", limitText: "TRP_A/B/C ≥ %90", result: officialChecklistResult(allEnvelope, [trp.TRP_A?.percentage, trp.TRP_B?.percentage, trp.TRP_C?.percentage].every((value) => Number.isFinite(Number(value)))), evidenceRef })
+  ]);
+}
+
 const CLASSIC_PFK_PLANTS = new Set(["PFK:HES", "PFK:DGKCS", "PFK:TES"]);
 
 const LEGACY_RESERVE_ALIASES = Object.freeze({

@@ -1,5 +1,6 @@
-const STORAGE_KEY = "yda-document-settings-v071";
-const PREVIOUS_STORAGE_KEY = "yda-document-settings-v070";
+const STORAGE_KEY = "yda-document-settings-v072";
+const PREVIOUS_STORAGE_KEY = "yda-document-settings-v071";
+const OLDER_STORAGE_KEY = "yda-document-settings-v070";
 const LEGACY_STORAGE_KEY = "teias-yhda-document-settings-v062";
 
 export const DEFAULT_DOCUMENT_SETTINGS = Object.freeze({
@@ -70,7 +71,7 @@ function deepMerge(base, input) {
 
 export function loadDocumentSettings() {
   try {
-    const stored = globalThis.localStorage?.getItem(STORAGE_KEY) ?? globalThis.localStorage?.getItem(PREVIOUS_STORAGE_KEY) ?? globalThis.localStorage?.getItem(LEGACY_STORAGE_KEY);
+    const stored = globalThis.localStorage?.getItem(STORAGE_KEY) ?? globalThis.localStorage?.getItem(PREVIOUS_STORAGE_KEY) ?? globalThis.localStorage?.getItem(OLDER_STORAGE_KEY) ?? globalThis.localStorage?.getItem(LEGACY_STORAGE_KEY);
     return stored ? deepMerge(cloneDefaults(), JSON.parse(stored)) : cloneDefaults();
   } catch {
     return cloneDefaults();
